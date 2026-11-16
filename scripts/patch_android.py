@@ -49,3 +49,24 @@ public class MainActivity extends BridgeActivity {{
 }}
 """, encoding="utf-8")
 print("parche aplicado a", java)
+
+# ---- Ícono de la app (usa los íconos de www/) ----
+import shutil
+res = root / "res"
+shutil.copy("www/icon-maskable-512.png", res / "drawable-nodpi" / "arcane_icon.png") if (res / "drawable-nodpi").exists() else (
+    (res / "drawable-nodpi").mkdir(parents=True, exist_ok=True), shutil.copy("www/icon-maskable-512.png", res / "drawable-nodpi" / "arcane_icon.png"))
+adaptive = """<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/arcane_bg"/>
+    <foreground>
+        <inset android:drawable="@drawable/arcane_icon" android:inset="16.67%"/>
+    </foreground>
+</adaptive-icon>
+"""
+(res / "mipmap-anydpi-v26").mkdir(parents=True, exist_ok=True)
+for n in ("ic_launcher.xml", "ic_launcher_round.xml"):
+    (res / "mipmap-anydpi-v26" / n).write_text(adaptive, encoding="utf-8")
+for d in res.glob("mipmap-*dpi"):   # Android antiguo (sin íconos adaptativos)
+    for n in ("ic_launcher.png", "ic_launcher_round.png"):
+        shutil.copy("www/icon-192.png", d / n)
+print("ícono aplicado")
