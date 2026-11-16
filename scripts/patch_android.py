@@ -7,7 +7,6 @@ extra = """
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@color/arcane_bg</item>
-        <item name="android:windowLayoutInCutoutMode">shortEdges</item>
 """
 s = re.sub(r'(<style name="AppTheme\.NoActionBar"[^>]*>)', lambda m: m.group(1) + extra, s, count=1)
 styles.write_text(s, encoding="utf-8")
@@ -18,8 +17,10 @@ pkg = re.search(r"package\s+([\w.]+);", java.read_text(encoding="utf-8")).group(
 java.write_text(f"""package {pkg};
 
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.WindowManager;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -31,6 +32,11 @@ public class MainActivity extends BridgeActivity {{
   public void onCreate(Bundle savedInstanceState) {{
     super.onCreate(savedInstanceState);
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    if (Build.VERSION.SDK_INT >= 28) {{
+      WindowManager.LayoutParams lp = getWindow().getAttributes();
+      lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+      getWindow().setAttributes(lp);
+    }}
     getWindow().getDecorView().setBackgroundColor(Color.parseColor("#101528"));
     View content = findViewById(android.R.id.content);
     ViewCompat.setOnApplyWindowInsetsListener(content, (v, insets) -> {{
