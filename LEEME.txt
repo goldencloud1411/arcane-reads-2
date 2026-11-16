@@ -1,0 +1,6 @@
+Arcane Reads - app nativa Android (gratis, compilada en GitHub Actions)
+1) Crea un repositorio NUEVO en GitHub (p. ej. arcane-reads-android) y sube TODO el contenido de este zip a su raiz (incluida la carpeta oculta .github).
+2) En el repo: pestaña Actions > "Build Android APK" > Run workflow. Tarda unos minutos.
+3) Al terminar, entra a la ejecución y descarga el artefacto "arcane-reads-apk" (zip con app-debug.apk).
+4) Pasa el APK al telefono, abrelo y permite "instalar apps desconocidas".
+Para actualizar la app: reemplaza los archivos de la carpeta www/ y vuelve a ejecutar el workflow.

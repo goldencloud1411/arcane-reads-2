@@ -1,0 +1,7 @@
+{
+  "appId": "com.arcanereads.app",
+  "appName": "Arcane Reads",
+  "webDir": "www",
+  "backgroundColor": "#101528",
+  "android": { "backgroundColor": "#101528" }
+}

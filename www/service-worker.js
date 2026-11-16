@@ -1,0 +1,12 @@
+const CACHE='arcane-reads-v2-9-12';
+const ASSETS=['./','./index.html','./app.js?v=22.0','./extra.js?v=8.0','./extra2.js?v=10.0','./extra3.js?v=10.0','./extra4.js?v=22.0','./extra5.js?v=22.0','./extra6.js?v=28.0','./extra7.js?v=41.0','./extra8.js?v=20.0','./extra9.js?v=41.0','./extra10.js?v=22.0','./extra11.js?v=291.0','./extra10.css?v=23.0','./extra12.js?v=26.0','./extra13.js?v=26.0','./extra14.js?v=42.0','./extra15.js?v=29.0','./extra16.js?v=292.0','./extra17.js?v=293.0','./extra18.js?v=52.0','./extra19.js?v=2.0','./extra20.js?v=1.0','./extra12.css?v=292.0','./site.webmanifest?v=9.0','./icon-192.png','./icon-512.png','./icon-180.png','./icon-maskable-512.png'];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(n=>n.startsWith('arcane-reads-')&&n!==CACHE).map(n=>caches.delete(n)))).then(()=>self.clients.claim())));
+// Red primero (siempre la versión más nueva); si no hay conexión, caché. Incluye fuentes y portadas.
+self.addEventListener('fetch',e=>{
+  const r=e.request; if(r.method!=='GET') return;
+  const u=new URL(r.url), same=u.origin===self.location.origin;
+  const cacheable=same||/fonts\.(googleapis|gstatic)\.com|covers\.openlibrary\.org|books\.google/.test(u.hostname);
+  if(!cacheable) return;
+  e.respondWith(fetch(r).then(res=>{if(res.ok||res.type==='opaque'){const copy=res.clone();caches.open(CACHE).then(c=>c.put(r,copy))}return res}).catch(()=>caches.match(r).then(m=>m||(r.mode==='navigate'?caches.match('./index.html'):Response.error()))));
+});

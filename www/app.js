@@ -1,0 +1,570 @@
+let db;
+const $ = id=>document.getElementById(id);
+const esc = x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const uid = ()=>crypto.randomUUID?.() || (Date.now().toString(36)+Math.random().toString(36).slice(2));
+const ymd=d=>new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const today = ()=>ymd(new Date());
+const greeting=()=>{const h=new Date().getHours();return h<6?'Buenas noches':h<12?'Buenos días':h<19?'Buenas tardes':'Buenas noches'};
+const pct=b=>b.pages?Math.min(100,Math.round((b.current||0)/b.pages*100)):0;
+const bar=p=>`<div class="bar" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100"><i style="width:${p}%"></i></div>`;
+function toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.setAttribute('role','status');document.body.appendChild(t)}t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2200)}
+function sortBooks(l){const k=filters.sort||'recent',c=(a,b)=>String(a||'').localeCompare(String(b||''),'es');return k==='title'?l.sort((a,b)=>c(a.title,b.title)):k==='author'?l.sort((a,b)=>c(a.author,b.author)):k==='rating'?l.sort((a,b)=>(b.rating||0)-(a.rating||0)):l.slice().reverse()}
+const monthName = ()=>new Intl.DateTimeFormat('es-PE',{month:'long',year:'numeric'}).format(new Date());
+let tab='Inicio', shelfId='default', draft=null, cubeAngle=-22, filters={status:'Todos',query:'',sort:'recent'};
+let data={
+  profile:{name:'Valeria',theme:'classic'},
+  theme:'classic',
+  goal:20,
+  books:[],
+  sessions:[],
+  shelves:[{id:'default',name:'Arcane Reads',rows:3,theme:'celestial',background:'',decor:'candle'}],
+  settings:{customUi:true,readingReminder:'19:30'}
+};
+
+const STATUS = ['Todos','Por leer','Leyendo','Leído','Abandonado'];
+const BOOK_SHELF_MAP = {'to-read':'Por leer','currently-reading':'Leyendo','read':'Leído'};
+
+function openDB(){return new Promise((res,rej)=>{const req=indexedDB.open('ArcaneReadsV2',1);req.onupgradeneeded=()=>req.result.createObjectStore('state');req.onsuccess=()=>{db=req.result;res()};req.onerror=()=>rej(req.error)})}
+function load(){return new Promise(resolve=>{const q=db.transaction('state').objectStore('state').get('app');q.onsuccess=()=>{if(q.result) data={...data,...q.result,settings:{...data.settings,...(q.result.settings||{})},profile:{...data.profile,...(q.result.profile||{})}};resolve()};q.onerror=()=>resolve()})}
+function save(){return new Promise((resolve,reject)=>{const tx=db.transaction('state','readwrite');tx.objectStore('state').put(data,'app');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}
+function rerender(){render();save().catch(console.error)}
+function activeShelf(){return data.shelves.find(s=>s.id===shelfId)||data.shelves[0]}
+function getBook(id){return data.books.find(b=>b.id===id)}
+function readingBooks(){return data.books.filter(b=>b.status==='Leyendo')}
+function doneBooks(){return data.books.filter(b=>b.status==='Leído')}
+function unreadBooks(){return data.books.filter(b=>b.status==='Por leer')}
+function totalPagesRead(){return data.sessions.reduce((a,s)=>a+(+s.pages||0),0)}
+function totalMinutes(){return data.sessions.reduce((a,s)=>a+(+s.minutes||0),0)}
+function readDaysThisMonth(){const month=today().slice(0,7);return new Set(data.sessions.filter(s=>s.date.startsWith(month)).map(s=>s.date)).size}
+function streakDays(){const set=new Set(data.sessions.map(s=>s.date)),d=new Date();if(!set.has(ymd(d)))d.setDate(d.getDate()-1);let n=0;while(set.has(ymd(d))){n++;d.setDate(d.getDate()-1)}return n}
+function setTab(next){tab=next;render()}
+
+function coverHtml(book, cls=''){return book.cover?`<img class="${cls}" src="${book.cover}" alt="">`:`<div class="${cls}" style="display:grid;place-items:center;color:#674e45;font-family:var(--font-title);height:100%">✦<br>${esc(book.title||'Libro')}</div>`}
+function spineLabel(book){return esc(book.shortSpine || book.title || 'Libro')}
+function displayAsset(book){if(book.display==='Portada') return book.cover; if(book.display==='Canto') return book.edge; if(book.display==='Apilado') return book.cover || book.spine; return book.spine;}
+
+function render(){
+  applyTheme();
+  $('app').classList.toggle('immersive',tab==='Biblioteca'); renderTopbar(); renderNav(); $('main').innerHTML='';
+  const main=$('main');
+  if(tab==='Inicio') main.appendChild(renderHome());
+  if(tab==='Libros') main.appendChild(renderBooks());
+  if(tab==='Biblioteca') main.appendChild(renderLibrary());
+  if(tab==='Estadísticas') main.appendChild(renderStats());
+  if(tab==='Perfil') main.appendChild(renderProfile());
+}
+
+function renderTopbar(){
+  const top=$('topbar');
+  top.className='topbar';
+  top.innerHTML=`<div class="brand"><img class="brand-badge" src="icon-192.png" alt=""><div><div class="eyebrow">${greeting()}, ${esc(data.profile.name||'lector')}</div><h1>Arcane Reads</h1></div></div><button class="mini-btn" onclick="openQuickActions()">✦ Acciones</button>`;
+}
+function renderNav(){
+ const paths={'Inicio':'<path d="M3 10 12 3l9 7v10H3z"/><path d="M9 20v-7h6v7"/>','Libros':'<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/>','Biblioteca':'<path d="M3 5h6l3 2 3-2h6v15h-6l-3 2-3-2H3zM12 7v15"/>','Estadísticas':'<path d="M4 20V12h4v8M10 20V4h4v16M16 20v-11h4v11"/>','Perfil':'<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>'};
+ $('nav').innerHTML=['Inicio','Libros','Biblioteca','Estadísticas','Perfil'].map(name=>`<button class="${tab===name?'active':''}" aria-current="${tab===name?'page':'false'}" onclick="setTab('${name}')"><svg viewBox="0 0 24 24" aria-hidden="true">${paths[name]}</svg><span>${name}</span></button>`).join('');
+}
+
+function renderHome(){
+  const wrap=document.createElement('div');
+  wrap.className='section-gap';
+  const current=readingBooks()[0];
+  wrap.innerHTML=`
+    <section class="card hero">
+      <div class="hero-book">${current?.cover?`<img src="${current.cover}" alt="">`:'📖'}</div>
+      <div class="hero-copy">
+        <div class="eyebrow">Tu próximo capítulo</div>
+        <h2>${current?esc(current.title):'¿Qué estás leyendo?'}</h2>
+        <p>${current?`${esc(current.author||'')} · Página ${current.current||0} de ${current.pages||'—'}`:'Elige un libro de tu biblioteca para iniciar una sesión de lectura pausada.'}</p>${current&&current.pages?bar(pct(current)):''}
+      </div>
+      <div class="hero-actions">
+        <button class="btn" onclick="${current?`openReadingSession('${current.id}')`:'openAddBookFlow()'}">${current?'Empezar sesión':'Elige un libro'}</button>
+        <button class="btn-ghost" onclick="openQuickPick()">Elige tu próximo libro</button>
+      </div>
+    </section>
+    <section class="banner"><div><strong>Arcane Library</strong><div class="small">Tu biblioteca personalizada</div></div><button class="mini-btn" onclick="setTab('Biblioteca')">Ver estantería</button></section>
+    <section class="card">
+      <div class="label-row"><h2>Tu biblioteca</h2><button class="link-btn" onclick="setTab('Biblioteca')">Abrir</button></div>
+      ${renderShelfPreview(activeShelf())}
+    </section>
+    <section class="grid-2">
+      <div class="card"><div class="label-row"><div><div class="small muted">Tu meta ${new Date().getFullYear()}</div><h3>${doneBooks().length}/${data.goal}</h3></div><div class="pill">${Math.round((doneBooks().length/Math.max(data.goal,1))*100)||0}%</div></div><progress max="${Math.max(data.goal,1)}" value="${doneBooks().length}" style="width:100%"></progress></div>
+      <div class="card"><div class="small muted">Racha actual</div><h3>${streakDays()} días</h3><p class="small">Días leídos este mes: ${readDaysThisMonth()}</p></div>
+    </section>
+    <section class="card"><div class="label-row"><h2>Acceso rápido</h2></div><div class="tabs"><button class="chip" onclick="openAddBookFlow()">Añadir libro</button><button class="chip" onclick="$('importer').click()">Importar Goodreads</button><button class="chip" onclick="setTab('Estadísticas')">Ver estadísticas</button><button class="chip" onclick="backup()">Exportar copia</button></div></section>
+  `;
+  return wrap;
+}
+
+function renderBooks(){
+  const wrap=document.createElement('div');
+  const list=filteredBooks();
+  wrap.className='section-gap';
+  wrap.innerHTML=`
+    <section>
+      <div class="label-row"><div><h2>Tus libros</h2><div class="muted small">Busca, organiza y edita tus ejemplares</div></div><button class="mini-btn" onclick="openAddBookFlow()">+ Añadir</button></div>
+      <div class="status-filters" aria-label="Filtrar libros">${STATUS.map(s=>`<button class="chip ${filters.status===s?'active':''}" onclick="filters.status='${s}';render()">${s}</button>`).join('')}</div>
+      <div class="book-search"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><input aria-label="Buscar en mis libros" placeholder="Título, autor, saga…" value="${esc(filters.query)}" oninput="filters.query=this.value;refreshBookResults()"><select class="sort" aria-label="Ordenar libros" onchange="filters.sort=this.value;refreshBookResults()">${[['recent','Recientes'],['title','Título'],['author','Autor'],['rating','Valoración']].map(([v,t])=>`<option value="${v}" ${filters.sort===v?'selected':''}>${t}</option>`).join('')}</select></div>
+    </section>
+    <section id="bookResults">${list.length?`<div class="book-grid">${list.map(b=>bookCard(b)).join('')}</div>`:`<div class="empty">Todavía no hay libros aquí.<br><br><button class="btn-soft" onclick="openAddBookFlow()">Añadir mi primer libro</button></div>`}</section>
+  `;
+  return wrap;
+}
+function refreshBookResults(){const el=$("bookResults"),list=filteredBooks();if(el)el.innerHTML=list.length?`<div class="book-grid">${list.map(bookCard).join("")}</div>`:`<div class="empty">No hay libros que coincidan con tu búsqueda.</div>`;}
+function filteredBooks(){return sortBooks(data.books.filter(b=> (filters.status==='Todos'||b.status===filters.status) && [b.title,b.author,b.saga,b.collection].join(' ').toLowerCase().includes(filters.query.toLowerCase())));}
+function bookCard(book){return `<button class="book-card" onclick="bookDetails('${book.id}')"><div class="book-cover">${coverHtml(book)}</div><div class="book-title">${esc(book.title)}</div><div class="muted">${esc(book.author||'Sin autor')}</div><div class="small muted">${esc(book.status||'')}${book.status==='Leyendo'&&book.pages?' · '+pct(book)+'%':''}</div>${book.status==='Leyendo'&&book.pages?bar(pct(book)):''}</button>`}
+
+function renderLibrary(){
+  const shelf=activeShelf();
+  const wrap=document.createElement('div');
+  wrap.className='section-gap';
+  wrap.innerHTML=`
+    <section>
+      <div class="label-row"><div><h2>Tu biblioteca</h2><div class="muted small">${esc(shelf.name)}</div></div><div style="display:flex;gap:8px"><button class="mini-btn" onclick="shelfSettings()">Personalizar</button><button class="mini-btn" onclick="newShelf()">+ Biblioteca</button></div></div>
+      <div class="card" style="padding:12px"><select onchange="shelfId=this.value;render()">${data.shelves.map(s=>`<option value="${s.id}" ${s.id===shelfId?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>
+    </section>
+    <section>${renderShelfPreview(shelf,true)}</section>
+  `;
+  return wrap;
+}
+function renderShelfPreview(shelf, large=false){
+  const books=data.books.filter(b=>b.shelf===shelf.id);
+  const bg=shelf.background?`background-image:url('${shelf.background}');background-size:cover;background-position:center;`:(shelf.theme==='cozy'?'background:linear-gradient(#ad8d78,#6d5345);':shelf.theme==='dark'?'background:linear-gradient(#32272d,#161118);':'background:var(--library-bg);');
+  const rows=Array.from({length:shelf.rows},(_,i)=>books.filter(b=>(b.row||0)===i));
+  return `<div class="shelf-shell"><div class="shelf-preview" style="${bg}${large?'min-height:560px':'min-height:250px'}">
+    ${rows.map((rowBooks,i)=>`<div class="shelf-row">${rowBooks.map(shelfBookHtml).join('')}${!rowBooks.length?'<div style="opacity:.45;padding:12px 6px;font-style:italic">Repisa vacía</div>':''}</div>`).join('')}
+  </div></div>`;
+}
+function shelfBookHtml(book){
+  const display=book.display||'Lomo';
+  const front=display==='Portada', edge=display==='Canto', stacked=display==='Apilado', src=displayAsset(book);
+  const h=Math.min(150,Math.max(68,(book.height||22)*5.8));
+  const w=Math.max(18,(front?(book.width||14):(book.thick||3))*5.7);
+  if(stacked){
+    const layers=Math.max(2,Math.min(6,book.stackCount||3));
+    const stackWidth=Math.max(68,(book.width||14)*5.9);
+    const layerHeight=Math.max(16,Math.min(24,(book.thick||3)*4.5));
+    const layerSrc=book.stackFace==='Canto'?(book.edge||''):(book.cover||book.spine||'');
+    return `<button class="shelf-book stack-book" onclick="openBook('${book.id}')" style="height:${layerHeight*layers+(layers-1)*5}px;width:${stackWidth}px;--stack-color:${book.stackFace==='Canto'?(book.edgeColor||'#e6dbc7'):(book.color||'#7b5d7b')}">${Array.from({length:layers},(_,i)=>`<div class="stack-layer" style="height:${layerHeight}px;transform:translateX(${Math.min(i*4,12)}px)">${layerSrc?`<img src="${layerSrc}" alt="">`:`<div class="stack-label">${esc(book.title||'Libro')}</div>`}</div>`).join('')}</button>`;
+  }
+  return `<button class="shelf-book" onclick="openBook('${book.id}')" style="height:${h}px;width:${w}px;background:${edge?(book.edgeColor||'#e6dbc7'):(book.color||'#7b5d7b')}">${src?`<img src="${src}" alt="">`:`<span>${spineLabel(book)}</span>`}</button>`;
+}
+
+function renderStats(){
+  const wrap=document.createElement('div');
+  const month=today().slice(0,7);
+  const sessions=data.sessions.filter(s=>s.date.startsWith(month));
+  const daysInMonth=new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
+  const byDay=Object.fromEntries(sessions.map(s=>[s.date,s]));
+  wrap.className='section-gap';
+  wrap.innerHTML=`
+    <section><h2>Tu lectura</h2><div class="muted small">${monthName()}</div></section>
+    <section class="metric-grid">
+      <div class="metric"><div class="n">${totalPagesRead()}</div><div class="muted small">Páginas</div></div>
+      <div class="metric"><div class="n">${totalMinutes()}</div><div class="muted small">Minutos</div></div>
+      <div class="metric"><div class="n">${doneBooks().length}</div><div class="muted small">Libros</div></div>
+    </section>
+    <section class="card"><div class="label-row"><div><h3>Resumen mensual</h3><div class="muted small">Racha ${streakDays()} días · ${readDaysThisMonth()} días leídos</div></div><button class="mini-btn" onclick="sessionDialog()">+ Sesión</button></div><div class="calendar">${Array.from({length:daysInMonth},(_,n)=>{const day=n+1; const d=`${month}-${String(day).padStart(2,'0')}`; const s=byDay[d]; return `<div class="day ${s?'read':''}">${s && getBook(s.bookId)?.cover?`<img src="${getBook(s.bookId).cover}" style="width:100%;height:100%;object-fit:cover">`:day}</div>`;}).join('')}</div></section>
+    <section class="card"><h3>Sesiones recientes</h3>${data.sessions.length?`<div class="list">${data.sessions.slice().reverse().slice(0,6).map(s=>`<div class="list-item"><div class="thumb">${getBook(s.bookId)?.cover?`<img src="${getBook(s.bookId).cover}" alt="">`:'📖'}</div><div><strong>${esc(getBook(s.bookId)?.title||'Libro')}</strong><div class="muted small">${esc(s.date)} · ${s.pages} páginas · ${s.minutes} min</div></div></div>`).join('')}</div>`:'<div class="empty">Aún no hay sesiones de lectura este mes.</div>'}</section>
+  `;
+  return wrap;
+}
+
+function renderProfile(){
+  const wrap=document.createElement('div');
+  wrap.className='section-gap';
+  wrap.innerHTML=`
+    <section><h2>Perfil</h2><div class="muted small">Configura la estética y tus datos</div></section>
+    <section class="card"><div class="label-row"><div><h3>${esc(data.profile.name||'Tu perfil')}</h3><div class="muted small">Tu rincón de lectura</div></div><img class="brand-badge" src="icon-192.png" alt="" style="width:46px;height:46px"></div></section>
+    <section class="card"><h3>Tu lectura</h3><div class="field" style="margin-top:8px"><label for="pName">Tu nombre</label><input id="pName" value="${esc(data.profile.name||'')}" onchange="data.profile.name=this.value.trim();rerender()"><label for="pGoal">Meta de libros este año</label><input id="pGoal" type="number" min="1" inputmode="numeric" value="${data.goal}" onchange="data.goal=Math.max(1,Math.round(+this.value||1));rerender()"></div></section>
+    <section class="card" id="installCard" hidden><h3>Instalar app</h3><div class="muted small" style="margin-bottom:10px">Ábrela desde tu pantalla de inicio, sin barra del navegador.</div><button class="btn-soft" onclick="installApp()">Instalar Arcane Reads</button></section>
+    <section class="card"><h3>App</h3>
+      <div class="switch-row"><div><strong>Tema</strong><div class="muted small">Estilo global de la app</div></div><select style="width:auto" onchange="data.theme=this.value;rerender()"><option value="classic" ${data.theme==='classic'?'selected':''}>Clásico</option><option value="dark" ${data.theme==='dark'?'selected':''}>Dark</option><option value="cozy" ${data.theme==='cozy'?'selected':''}>Cozy</option><option value="celestial" ${data.theme==='celestial'?'selected':''}>Celestial</option></select></div>
+      <div class="switch-row"><div><strong>Recordatorio de lectura</strong><div class="muted small">Solo referencia visual por ahora</div></div><input style="width:110px" value="${esc(data.settings.readingReminder||'19:30')}" onchange="data.settings.readingReminder=this.value;save()"></div>
+      <div class="switch-row"><div><strong>Datos de la biblioteca</strong><div class="muted small">Importar o exportar</div></div><div style="display:flex;gap:8px"><button class="mini-btn" onclick="$('importer').click()">Importar</button><button class="mini-btn" onclick="backup()">Exportar</button></div></div>
+    </section>
+    <section class="card"><h3>Cómo agregar libros fácil</h3><div class="notice success">Te recomiendo usar <strong>Buscar en línea</strong> para traer título, autor, portada, descripción y páginas desde Google Books u Open Library. Para Goodreads, la vía fiable es <strong>importar tu CSV</strong>.</div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn-soft" onclick="openAddBookFlow('search')">Buscar en línea</button><button class="mini-btn" onclick="$('importer').click()">Importar Goodreads</button><button class="mini-btn" onclick="editBook()">Añadir manual</button></div></section>
+  `;
+  applyTheme();
+  return wrap;
+}
+
+function applyTheme(){
+  const root=document.documentElement;
+  const theme=data.theme;
+  root.dataset.theme=theme;
+  if(theme==='dark'){
+    root.style.setProperty('--bg','#18151e'); root.style.setProperty('--panel','#241f2d'); root.style.setProperty('--card','#221d2a'); root.style.setProperty('--nav','#1d1824'); root.style.setProperty('--ink','#f4eae2'); root.style.setProperty('--muted','#bcaea7'); root.style.setProperty('--line','#3b3244'); root.style.setProperty('--accent','#a04c5e'); root.style.setProperty('--accent-soft','#35242a');
+  } else if(theme==='cozy'){
+    root.style.setProperty('--bg','#f9eee7'); root.style.setProperty('--panel','#fff8f1'); root.style.setProperty('--card','#fff8f1'); root.style.setProperty('--nav','#f8ebdf'); root.style.setProperty('--ink','#523936'); root.style.setProperty('--muted','#91746b'); root.style.setProperty('--line','#ead8ca'); root.style.setProperty('--accent','#ab5d63'); root.style.setProperty('--accent-soft','#f3dfe0');
+  } else if(theme==='celestial'){
+    root.style.setProperty('--bg','#11192f'); root.style.setProperty('--panel','#1d2844'); root.style.setProperty('--card','#1e2b4b'); root.style.setProperty('--nav','#16203a'); root.style.setProperty('--ink','#f5ecdf'); root.style.setProperty('--muted','#b8bed4'); root.style.setProperty('--line','#2f3e62'); root.style.setProperty('--accent','#bd8ed3'); root.style.setProperty('--accent-soft','#2c3553');
+  } else {
+    root.style.cssText='';
+  }
+  const systemColor=getComputedStyle(root).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name="theme-color"]').setAttribute('content',systemColor);
+}
+
+function showSheet(html){ const dlg=$('dlg'); dlg.innerHTML=`<div class="sheet">${html}</div>`; if(!dlg.open) dlg.showModal(); }
+function closeSheet(){ $('dlg').close(); }
+function jumpToEditorSection(id){const el=$(id),sheet=$('dlg').querySelector('.sheet');if(el&&sheet)sheet.scrollTo({top:sheet.scrollTop+el.getBoundingClientRect().top-sheet.getBoundingClientRect().top-10,behavior:'smooth'});}
+function refreshEditorSummary(){if(!draft)return;const a=$('editorDisplay'),b=$('editorFormat'),c=$('editorDimensions'),d=$('stackControls');if(a)a.textContent=draft.display||'Lomo';if(b)b.textContent=draft.format||'Tapa blanda';if(c)c.textContent=`${draft.height||22} × ${draft.width||14} × ${draft.thick||3} cm`;if(d)d.hidden=draft.display!=='Apilado';drawCube();}
+function rerenderBookEditor(){refreshEditorSummary();}
+
+function openQuickActions(){
+  showSheet(`
+    <div class="sheet-header"><div><h2>Acciones rápidas</h2><div class="muted small">Elige qué quieres hacer</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
+    <div class="list">
+      <button class="card" onclick="closeSheet();openAddBookFlow('search')" style="text-align:left"><strong>Buscar en línea</strong><div class="muted small">Traer título, autor, portada y descripción</div></button>
+      <button class="card" onclick="closeSheet();$('importer').click()" style="text-align:left"><strong>Importar Goodreads</strong><div class="muted small">Sube tu CSV exportado desde Goodreads</div></button>
+      <button class="card" onclick="closeSheet();editBook()" style="text-align:left"><strong>Añadir manualmente</strong><div class="muted small">Para ediciones especiales o libros sin ficha online</div></button>
+      <button class="card" onclick="closeSheet();sessionDialog()" style="text-align:left"><strong>Registrar sesión</strong><div class="muted small">Anota minutos y páginas leídas</div></button>
+    </div>
+  `)
+}
+function openQuickPick(){
+  const pending=unreadBooks(); if(!pending.length) return openAddBookFlow();
+  const pick=pending[Math.floor(Math.random()*pending.length)];
+  showSheet(`<div class="sheet-header"><div><h2>Tu próxima lectura</h2><div class="muted small">Elegida al azar</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div><div class="card"><div class="list-item"><div class="thumb">${pick.cover?`<img src="${pick.cover}">`:'📖'}</div><div><strong>${esc(pick.title)}</strong><div class="muted small">${esc(pick.author||'')}</div><button class="btn-soft" style="margin-top:12px" onclick="closeSheet();editBook('${pick.id}')">Ver libro</button></div></div></div>`)
+}
+
+function openAddBookFlow(mode='menu'){
+  if(mode==='search') return openSearchSheet();
+  showSheet(`
+    <div class="sheet-header"><div><h2>Añadir libro</h2><div class="muted small">Encuentra tu edición favorita</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
+    <div class="list">
+      <button class="card" onclick="openSearchSheet()" style="text-align:left"><strong>✦ Buscar en Goodreads</strong><div class="muted small">Encuentra el libro y sus ediciones en el catálogo de Goodreads.</div></button>
+      <button class="card" onclick="openSearchSheet('google')" style="text-align:left"><strong>Buscar por título o ISBN</strong><div class="muted small">Trae portada, autor, páginas y descripción desde Google Books u Open Library.</div></button>
+      <button class="card" onclick="closeSheet();$('importer').click()" style="text-align:left"><strong>Importar mi biblioteca de Goodreads</strong><div class="muted small">Importación de un CSV exportado de tu cuenta.</div></button>
+      <button class="card" onclick="editBook()" style="text-align:left"><strong>Añadir manualmente</strong><div class="muted small">Personaliza cada cara y las medidas de tu ejemplar.</div></button>
+    </div>
+  `);
+}
+let searchResultsCache=[];
+function openSearchSheet(source='goodreads'){
+  showSheet(`
+    <div class="sheet-header"><div><h2>Encuentra tu libro</h2><div class="muted small">Busca una obra o una edición concreta</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
+    <div class="field"><label for="bookSearchInput">Título, autor o ISBN</label><div style="display:flex;gap:8px;align-items:center"><input id="bookSearchInput" placeholder="Alas de sangre, Rebecca Yarros…" onkeydown="if(event.key==='Enter'){event.preventDefault();runBookSearch()}"><button class="btn-soft" onclick="runBookSearch()">Buscar</button></div></div>
+    <div class="segmented" style="margin-top:14px"><button id="segGR">Goodreads</button><button id="segGoogle">Google Books</button><button id="segOL">Open Library</button></div>
+    <div id="searchStatus" class="muted small" style="margin-top:12px"></div>
+    <div id="grHelp" style="margin-top:14px;display:none"><div class="notice"><strong>Encuentra la edición exacta.</strong> Busca en Goodreads, abre la ficha de tu edición y copia su ISBN. Regresa aquí y pega el ISBN para buscar sus datos en los catálogos disponibles. Goodreads se abre en otra pestaña; no existe acceso oficial público al catálogo para copiar sus fichas directamente.</div><div class="field" style="margin-top:14px"><label for="grIsbn">ISBN de la edición (10 o 13 caracteres)</label><input id="grIsbn" placeholder="978…" inputmode="text"><label for="grUrl">Enlace de Goodreads (opcional)</label><input id="grUrl" type="url" placeholder="https://www.goodreads.com/book/show/…"><button class="btn-soft" onclick="lookupGoodreadsEdition()">Traer ficha por ISBN</button><button class="mini-btn" onclick="manualGoodreadsEdition()">Crear ficha manual con enlace</button></div></div>
+    <div id="searchResults" class="search-results"></div>
+  `);
+  window.searchSource=source;window.pendingGoodreadsUrl='';
+  const select=(src)=>{window.searchSource=src; for(const [id,key] of [['segGR','goodreads'],['segGoogle','google'],['segOL','openlibrary']]) $(id).classList.toggle('active',src===key); $('grHelp').style.display=src==='goodreads'?'block':'none'; $('searchStatus').textContent=src==='goodreads'?'Goodreads · búsqueda en su sitio oficial':'Los resultados muestran fichas de la fuente seleccionada.'; $('searchResults').innerHTML='';};
+  $('segGR').onclick=()=>select('goodreads'); $('segGoogle').onclick=()=>select('google'); $('segOL').onclick=()=>select('openlibrary');select(source);
+}
+function validGoodreadsUrl(raw){try{const u=new URL(raw);return u.protocol==='https:'&&['goodreads.com','www.goodreads.com'].includes(u.hostname)&&u.pathname.startsWith('/book/show/')?u.href:'';}catch{return '';}}
+function lookupGoodreadsEdition(){const isbn=$('grIsbn').value.replace(/[^0-9X]/gi,''); if(!/^(?:\d{13}|\d{9}[0-9X])$/i.test(isbn)){ $('searchStatus').textContent='Escribe un ISBN válido de 10 o 13 caracteres.';return;} const raw=$('grUrl').value.trim();window.pendingGoodreadsUrl=validGoodreadsUrl(raw);if(raw&&!window.pendingGoodreadsUrl){$('searchStatus').textContent='El enlace debe ser una ficha de libro de Goodreads.';return;} $('bookSearchInput').value=isbn;runBookSearch(true);}
+function manualGoodreadsEdition(){const raw=$('grUrl').value.trim(),url=validGoodreadsUrl(raw),isbn=$('grIsbn').value.replace(/[^0-9X]/gi,'');if(raw&&!url){$('searchStatus').textContent='El enlace debe ser una ficha de libro de Goodreads.';return;} editBook();draft.goodreadsUrl=url;draft.isbn=isbn;const e=$('grBookUrl');if(e)e.value=url;const f=$('bookISBN');if(f)f.value=isbn;}
+async function runBookSearch(forceIsbn=false){
+  const input=$('bookSearchInput'), q=input.value.trim(); if(!q) return;
+  
+  const status=$('searchStatus'), resultsEl=$('searchResults');status.textContent='Buscando…';resultsEl.innerHTML='';
+  try{
+    let results=[];
+    if(forceIsbn){let errs=0;try{results=await searchGoogleBooks('isbn:'+q)}catch{errs++}if(!results.length){try{results=await searchOpenLibrary('isbn:'+q)}catch{errs++}}if(!results.length&&errs===2)throw new Error('No se pudo consultar los catálogos. Intenta nuevamente.');}
+    else if(window.searchSource==='goodreads'){try{results=await searchGoodreads(q)}catch{results=[]}if(!results.length){status.textContent='Goodreads no respondió; uso Google Books…';try{results=await searchGoogleBooks(q)}catch{results=await searchOpenLibrary(q)}}}
+    else if(window.searchSource==='openlibrary') results=await searchOpenLibrary(q);
+    else {try{results=await searchGoogleBooks(q);}catch{results=await searchOpenLibrary(q);}if(!results.length)results=await searchOpenLibrary(q);}
+    if(!status.isConnected)return;
+    searchResultsCache=results;
+    status.textContent=results.length?`${results.length} resultado(s) · elige tu edición`:'No encontré resultados. Puedes añadir el libro manualmente.';
+    resultsEl.innerHTML=results.map((r,i)=>`<div class="search-card"><div class="thumb">${r.cover?`<img src="${esc(r.cover)}" alt="">`:'📖'}</div><div style="flex:1;min-width:0"><strong>${esc(r.title)}</strong><div class="muted small">${esc(r.author||'Sin autor')} ${r.pages?'· '+r.pages+' páginas':''}</div><div class="small muted">${esc(r.publisher||'')} ${esc(String(r.published||''))} ${r.isbn?'· ISBN '+esc(r.isbn):''}</div><div class="small" style="margin-top:6px">${esc(String(r.description||'').slice(0,180))}${String(r.description||'').length>180?'…':''}</div><div class="tiny muted" style="margin-top:6px">Fuente: ${({google:'Google Books',goodreads:'Goodreads'})[r.source]||'Open Library'}</div><button class="btn-soft" onclick="importSearchResult(searchResultsCache,${i})">Agregar a mi biblioteca</button></div></div>`).join('');
+  }catch(err){if(status.isConnected)status.textContent='No se pudo buscar: '+err.message;}
+}
+
+async function searchGoogleBooks(query){
+  const url=`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=12&printType=books`;
+  const res=await fetch(url); if(!res.ok) throw new Error('falló Google Books');
+  const json=await res.json();
+  return (json.items||[]).map(item=>{ const v=item.volumeInfo||{}; return {
+    source:'google',
+    extId:item.id,
+    title:v.title||'',
+    author:(v.authors||[]).join(', '),
+    description:stripHtml(v.description||''),
+    pages:v.pageCount||0,
+    isbn:(v.industryIdentifiers||[]).map(x=>x.identifier).find(Boolean)||'',
+    cover:normalizeCover(v.imageLinks?.thumbnail||v.imageLinks?.smallThumbnail||''),
+    published:v.publishedDate||'',
+    publisher:v.publisher||'',
+    categories:(v.categories||[]).join(', ')
+  }});
+}
+async function searchOpenLibrary(query){
+  const url=query.startsWith('isbn:')?`https://openlibrary.org/search.json?isbn=${encodeURIComponent(query.slice(5))}&limit=12`:`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=12`;
+  const res=await fetch(url); if(!res.ok) throw new Error('falló Open Library');
+  const json=await res.json();
+  return (json.docs||[]).map(d=>({
+    source:'openlibrary',
+    extId:d.key,
+    title:d.title||'',
+    author:(d.author_name||[]).join(', '),
+    description:Array.isArray(d.first_sentence)?String(d.first_sentence[0]||''):typeof d.first_sentence==='string'?d.first_sentence:'',
+    pages:d.number_of_pages_median || 0,
+    isbn:(d.isbn||[])[0] || '',
+    cover:d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-L.jpg` : '',
+    published:d.first_publish_year||'',
+    publisher:(d.publisher||[])[0] || '',
+    categories:(d.subject||[]).slice(0,5).join(', ')
+  }));
+}
+function normalizeCover(url){return url ? url.replace('http://','https://') : ''}
+function stripHtml(html){const div=document.createElement('div'); div.innerHTML=html; return div.textContent || div.innerText || '';}
+function importSearchResult(results, index){
+  const r = results[index];
+  const book={id:uid(), title:r.title, author:r.author, isbn:r.isbn||'', pages:r.pages||0, current:0, status:'Por leer', description:r.description||'', publisher:r.publisher||'', year:String(r.published||''), categories:r.categories||'', height:22,width:14,thick:3,color:'#7b5472',edgeColor:'#e6dbc7',display:'Lomo',shelf:activeShelf().id,row:0,format:'Tapa blanda',rating:0,notes:'',saga:'',collection:'', cover:r.cover||'', source:r.source, sourceId:r.extId, goodreadsUrl:r.goodreadsUrl||window.pendingGoodreadsUrl||'', stackCount:3, stackFace:'Portada'};
+  if(data.books.some(b => (book.isbn && b.isbn===book.isbn) || (!book.isbn && b.source===book.source && b.sourceId===book.sourceId)) && !confirm('Ya tienes una ficha de esta edición. ¿Añadir otro ejemplar?')) return;
+  data.books.push(book); closeSheet(); rerender(); setTimeout(()=>editBook(book.id),120);
+}
+
+function editBook(id, override){
+  const base={id:uid(), title:'', author:'', isbn:'', pages:0, current:0, status:'Por leer', description:'', publisher:'', year:'', categories:'', height:22,width:14,thick:3,color:'#7b5472',edgeColor:'#e6dbc7',display:'Lomo',shelf:activeShelf().id,row:0,format:'Tapa blanda',rating:0,notes:'',saga:'',collection:'', cover:'',spine:'',edge:'',back:'',top:'',bottom:'',stackCount:3,stackFace:'Portada'};
+  const existing=id ? getBook(id) : null;
+  draft=structuredClone(override || existing || base); cubeAngle=-20;
+  const exists=!!data.books.find(b=>b.id===draft.id);
+  showSheet(`
+    <div class="editor-shell">
+      <div class="sheet-header"><div><h2>${exists?'Editar libro':'Nuevo libro'}</h2><div class="muted small">Personaliza el ejemplar físico y cómo se verá en tu estantería</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
+      <section class="editor-hero">
+        <div class="preview" id="preview"><div class="cube" id="cube"></div></div>
+        <div class="editor-statline">
+          <div class="editor-stat">Vista en repisa: <strong id="editorDisplay">${esc(draft.display||'Lomo')}</strong></div>
+          <div class="editor-stat">Formato: <strong id="editorFormat">${esc(draft.format||'Tapa blanda')}</strong></div>
+          <div class="editor-stat">Medidas: <strong id="editorDimensions">${esc(draft.height||22)} × ${esc(draft.width||14)} × ${esc(draft.thick||3)} cm</strong></div>
+        </div>
+        <div class="editor-view-tabs"><button onclick="cubeAngle=0;drawCube()">Portada</button><button onclick="cubeAngle=90;drawCube()">Lomo</button><button onclick="cubeAngle=-90;drawCube()">Canto</button><button onclick="cubeAngle=180;drawCube()">Contraportada</button></div>
+        <div class="editor-jump">
+          <button onclick="jumpToEditorSection('secBasic')">Detalles</button>
+          <button onclick="jumpToEditorSection('secShelf')">Estantería</button>
+          <button onclick="jumpToEditorSection('secStyle')">Diseño</button>
+          <button onclick="jumpToEditorSection('secPhotos')">Fotos</button>
+        </div>
+      </section>
+
+      <section class="editor-block" id="secBasic">
+        <h3>Detalles del libro</h3><div class="muted small">La información principal de tu ejemplar.</div>
+        <div class="field">
+          <label>Título</label><input value="${esc(draft.title)}" oninput="draft.title=this.value;drawCube()">
+          <label>Autor</label><input value="${esc(draft.author)}" oninput="draft.author=this.value">
+          <label>Descripción</label><textarea oninput="draft.description=this.value">${esc(draft.description||'')}</textarea>
+          <label>ISBN</label><input id="bookISBN" value="${esc(draft.isbn)}" oninput="draft.isbn=this.value">
+          <label>Enlace de Goodreads (opcional)</label><input id="grBookUrl" type="url" value="${esc(draft.goodreadsUrl||'')}" oninput="draft.goodreadsUrl=this.value" placeholder="https://www.goodreads.com/book/show/…">
+          <div class="swatch-row">
+            <div><label>Páginas</label><input type="number" min="0" value="${draft.pages||0}" oninput="draft.pages=+this.value"></div>
+            <div><label>Página actual</label><input type="number" min="0" value="${draft.current||0}" oninput="draft.current=+this.value"></div>
+          </div>
+          <div class="swatch-row">
+            <div><label>Estado</label><select onchange="draft.status=this.value">${STATUS.filter(s=>s!=='Todos').map(s=>`<option ${draft.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+            <div><label>Formato</label><select onchange="draft.format=this.value;rerenderBookEditor()">${['Tapa blanda','Tapa dura','Digital','Audiolibro'].map(s=>`<option ${draft.format===s?'selected':''}>${s}</option>`).join('')}</select></div>
+          </div>
+          <div class="swatch-row">
+            <div><label>Valoración</label><input type="number" step=".5" min="0" max="5" value="${draft.rating||0}" oninput="draft.rating=+this.value"></div>
+            <div><label>Saga</label><input value="${esc(draft.saga||'')}" oninput="draft.saga=this.value"></div>
+          </div>
+          <label>Colección</label><input value="${esc(draft.collection||'')}" oninput="draft.collection=this.value">
+          <label>Notas / reseña</label><textarea oninput="draft.notes=this.value">${esc(draft.notes||'')}</textarea>
+        </div>
+      </section>
+
+      <section class="editor-block" id="secShelf">
+        <h3>Cómo se verá en tu repisa</h3><div class="muted small">Elige la orientación visual del libro dentro de tu biblioteca.</div>
+        <div class="field">
+          <label>Mostrar en repisa</label><select onchange="draft.display=this.value;rerenderBookEditor()">${['Lomo','Portada','Canto','Apilado'].map(s=>`<option ${draft.display===s?'selected':''}>${s}</option>`).join('')}</select>
+          <div id="stackControls" ${draft.display==='Apilado'?'':'hidden'}><div class="swatch-row"><div><label>Cantidad apilada</label><input type="number" min="2" max="6" value="${draft.stackCount||3}" oninput="draft.stackCount=Math.max(2,Math.min(6,+this.value||3));drawCube()"></div><div><label>Vista de la pila</label><select onchange="draft.stackFace=this.value;drawCube()">${['Portada','Canto'].map(s=>`<option ${draft.stackFace===s?'selected':''}>${s}</option>`).join('')}</select></div></div></div>
+          <div class="swatch-row">
+            <div><label>Biblioteca</label><select onchange="draft.shelf=this.value">${data.shelves.map(s=>`<option value="${s.id}" ${draft.shelf===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>
+            <div><label>Repisa (1=superior)</label><input type="number" min="1" value="${(draft.row||0)+1}" oninput="draft.row=Math.max(0,+this.value-1)"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="editor-block" id="secStyle">
+        <h3>Diseño del ejemplar</h3><div class="muted small">Ajusta medidas, color del lomo y color del canto.</div>
+        <div class="field">
+          <div class="swatch-row">
+            <div><label>Altura (cm)</label><input type="number" step=".1" min="0.1" value="${draft.height||22}" oninput="draft.height=+this.value;refreshEditorSummary()"></div>
+            <div><label>Ancho (cm)</label><input type="number" step=".1" min="0.1" value="${draft.width||14}" oninput="draft.width=+this.value;refreshEditorSummary()"></div>
+          </div>
+          <div class="swatch-row">
+            <div><label>Grosor (cm)</label><input type="number" step=".1" min="0.1" value="${draft.thick||3}" oninput="draft.thick=+this.value;refreshEditorSummary()"></div>
+            <div><label>Color del lomo</label><input type="color" value="${draft.color||'#7b5472'}" oninput="draft.color=this.value;drawCube()"></div>
+          </div>
+          <label>Color del canto</label><input type="color" value="${draft.edgeColor||'#e6dbc7'}" oninput="draft.edgeColor=this.value;drawCube()">
+        </div>
+      </section>
+
+      <section class="editor-block" id="secPhotos">
+        <h3>Fotos del libro</h3><div class="muted small">Puedes usar imágenes reales de tu ejemplar para personalizar el 3D.</div>
+        <div class="field">
+          <label>Portada</label><input type="file" accept="image/*" onchange="pickFace('cover',this)">
+          <label>Lomo</label><input type="file" accept="image/*" onchange="pickFace('spine',this)">
+          <label>Canto delantero</label><input type="file" accept="image/*" onchange="pickFace('edge',this)">
+          <label>Contraportada</label><input type="file" accept="image/*" onchange="pickFace('back',this)">
+          <label>Canto superior</label><input type="file" accept="image/*" onchange="pickFace('top',this)">
+          <label>Canto inferior</label><input type="file" accept="image/*" onchange="pickFace('bottom',this)">
+        </div>
+      </section>
+
+      <div class="editor-actionbar">
+        <div class="editor-save-row"><button class="btn-soft" onclick="saveBook()">Guardar libro</button>${exists?`<button class="mini-btn" onclick="deleteBook('${draft.id}')">Eliminar</button>`:''}</div>
+      </div>
+    </div>
+  `);
+  drawCube();
+  const prev=$('preview'); let dragging=false,lastX=0;
+  prev.onpointerdown=e=>{dragging=true; lastX=e.clientX; prev.setPointerCapture(e.pointerId)};
+  prev.onpointermove=e=>{if(dragging){cubeAngle += (e.clientX-lastX)*.8; lastX=e.clientX; drawCube();}};
+  prev.onpointerup=()=>dragging=false; prev.onpointercancel=()=>dragging=false;
+}
+
+function drawCube(){
+  const cube=$('cube'); if(!cube) return;
+  if((draft.display||'')==='Apilado'){
+    const layers=Math.max(2,Math.min(6,draft.stackCount||3));
+    const width=Math.max(110,(draft.width||14)*9);
+    const layerH=Math.max(18,Math.min(30,(draft.thick||3)*5));
+    const faceSrc=draft.stackFace==='Canto' ? draft.edge : (draft.cover || draft.spine || '');
+    cube.style.width=width+'px'; cube.style.height=(layers*layerH + (layers-1)*6)+'px'; cube.style.transform='rotateX(12deg) rotateY(-18deg)';
+    cube.innerHTML=Array.from({length:layers},(_,i)=>`<div class="face" style="position:absolute;width:${width - i*8}px;height:${layerH}px;left:${i*4}px;top:${i*(layerH+6)}px;transform:none;background:${draft.stackFace==='Canto'?(draft.edgeColor||'#e6dbc7'):(draft.color||'#7e5974')}">${faceSrc?`<img src="${faceSrc}" alt="">`:`<span style="font-size:12px;color:#fff">${esc(draft.title||'Libro')}</span>`}</div>`).join('');
+    return;
+  }
+  const h=Math.min(220, Math.max(72, (draft.height||22)*8));
+  const w=h*Math.max(.28, Math.min(1.2, (draft.width||14)/(draft.height||22)));
+  const d=Math.max(10, Math.min(90, h*(draft.thick||3)/(draft.height||22)));
+  cube.style.width=w+'px'; cube.style.height=h+'px'; cube.style.transform=`rotateX(6deg) rotateY(${cubeAngle}deg)`;
+  const face=(src, txt, cls, style, bg)=>`<div class="face ${cls||''}" style="${style};background:${bg||draft.color||'#7b5472'}">${src?`<img src="${src}" alt="">`:`<span>${esc(txt||'')}</span>`}</div>`;
+  cube.innerHTML =
+    face(draft.cover,draft.title,'',`width:${w}px;height:${h}px;transform:translateZ(${d/2}px)`) +
+    face(draft.back,draft.author,'',`width:${w}px;height:${h}px;transform:rotateY(180deg) translateZ(${d/2}px)`) +
+    face(draft.spine,draft.title,'spine',`width:${d}px;height:${h}px;left:${(w-d)/2}px;transform:rotateY(-90deg) translateZ(${w/2}px)`,draft.color) +
+    face(draft.edge,'','',`width:${d}px;height:${h}px;left:${(w-d)/2}px;transform:rotateY(90deg) translateZ(${w/2}px)`,draft.edgeColor) +
+    face(draft.top,'','',`width:${w}px;height:${d}px;top:${(h-d)/2}px;transform:rotateX(90deg) translateZ(${h/2}px)`,draft.edgeColor) +
+    face(draft.bottom,'','',`width:${w}px;height:${d}px;top:${(h-d)/2}px;transform:rotateX(-90deg) translateZ(${h/2}px)`,draft.edgeColor);
+}
+function saveBook(){
+  if(!draft.title.trim()) return alert('Ponle un título al libro.'); if(draft.goodreadsUrl && !validGoodreadsUrl(draft.goodreadsUrl)) return alert('Usa un enlace de una ficha de Goodreads.');
+  if([draft.height,draft.width,draft.thick].some(v=>!Number.isFinite(v)||v<=0)) return alert('Las medidas deben ser positivas.');
+  draft.pages=Math.max(0,Math.round(draft.pages||0)); draft.current=Math.min(draft.pages||Infinity, Math.max(0,Math.round(draft.current||0)));
+  const shelf=data.shelves.find(s=>s.id===draft.shelf) || activeShelf(); draft.shelf=shelf.id; draft.row=Math.min(shelf.rows-1, Math.max(0,draft.row||0));
+  const idx=data.books.findIndex(b=>b.id===draft.id);
+  if(idx<0) data.books.push(draft); else data.books[idx]=draft; toast('Libro guardado');
+  closeSheet(); rerender();
+}
+function deleteBook(id){ if(confirm('¿Eliminar este libro?')){ data.books=data.books.filter(b=>b.id!==id); closeSheet(); rerender(); } }
+
+function sessionDialog(){
+  if(!data.books.length) return openAddBookFlow();
+  showSheet(`
+    <div class="sheet-header"><div><h2>Registrar sesión</h2><div class="muted small">Páginas y tiempo de hoy</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
+    <div class="field">
+      <label>Libro</label><select id="sessBook">${data.books.map(b=>`<option value="${b.id}">${esc(b.title)}</option>`).join('')}</select>
+      <label>Fecha</label><input type="date" id="sessDate" value="${today()}">
+      <div class="swatch-row"><div><label>Páginas leídas</label><input id="sessPages" type="number" min="0" value="0"></div><div><label>Minutos</label><input id="sessMins" type="number" min="0" value="0"></div></div>
+    </div>
+    <button class="btn-soft" style="margin-top:16px" onclick="saveSession()">Guardar sesión</button>
+  `)
+}
+function openReadingSession(bookId){ sessionDialog(); setTimeout(()=>{ if($('sessBook')) $('sessBook').value=bookId; },60); }
+function saveSession(){
+  const b=getBook($('sessBook').value); const pages=Math.max(0,+$('sessPages').value||0); const mins=Math.max(0,+$('sessMins').value||0);
+  data.sessions.push({id:uid(), bookId:b.id, date:$('sessDate').value||today(), pages, minutes:mins}); toast('Sesión guardada');
+  b.current=Math.min(b.pages||Infinity,(+b.current||0)+pages); if((b.pages||0) && b.current>=b.pages){ b.status='Leído'; } else if(pages>0 || mins>0){ b.status='Leyendo'; }
+  closeSheet(); rerender();
+}
+
+function shelfSettings(){
+  const s=activeShelf();
+  showSheet(`
+    <div class="sheet-header"><div><h2>Personalizar biblioteca</h2><div class="muted small">Fondo, nombre y repisas</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
+    <div class="field">
+      <label>Nombre</label><input id="shelfName" value="${esc(s.name)}">
+      <label>Estilo</label><select id="shelfTheme"><option value="celestial">Celestial</option><option value="dark">Dark academia</option><option value="cozy">Cozy</option></select>
+      <label>Número de repisas</label><input id="shelfRows" type="number" min="1" max="8" value="${s.rows}">
+      <label>Fondo propio</label><input type="file" accept="image/*" onchange="this.files[0]&&cropImage(this.files[0],innerWidth/innerHeight).then(x=>{if(x)window.__tempShelfBg=x})">
+    </div>
+    <button class="btn-soft" style="margin-top:16px" onclick="saveShelfSettings()">Guardar cambios</button>
+  `);
+  $('shelfTheme').value=s.theme;
+}
+function saveShelfSettings(){
+  const s=activeShelf(); s.name=$('shelfName').value.trim()||s.name; s.theme=$('shelfTheme').value; s.rows=Math.max(1,Math.min(8,+$('shelfRows').value||3)); if(window.__tempShelfBg) s.background=window.__tempShelfBg;
+  data.books.filter(b=>b.shelf===s.id && (b.row||0)>=s.rows).forEach(b=>b.row=s.rows-1);
+  window.__tempShelfBg=''; closeSheet(); rerender();
+}
+function newShelf(){ const name=prompt('Nombre de la nueva biblioteca'); if(!name?.trim()) return; const s={id:uid(),name:name.trim(),rows:3,theme:'celestial',background:''}; data.shelves.push(s); shelfId=s.id; rerender(); }
+
+function backup(){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'})); a.download='arcane-reads-backup.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+function readImage(file){return new Promise((resolve,reject)=>{if(!file) return resolve(''); const fr=new FileReader(); fr.onload=()=>{ const img=new Image(); img.onload=()=>{ const scale=Math.min(1, 1200/Math.max(img.width,img.height)); const c=document.createElement('canvas'); c.width=Math.max(1,img.width*scale); c.height=Math.max(1,img.height*scale); c.getContext('2d').drawImage(img,0,0,c.width,c.height); resolve(c.toDataURL('image/jpeg',0.88)); }; img.onerror=reject; img.src=fr.result; }; fr.onerror=reject; fr.readAsDataURL(file); })}
+function parseCSV(text){let rows=[],row=[],cell='',q=false; for(let i=0;i<text.length;i++){ const ch=text[i]; if(ch==='"'){ if(q && text[i+1]==='"'){cell+='"'; i++;} else q=!q; } else if(ch===',' && !q){ row.push(cell); cell=''; } else if((ch==='\n' || ch==='\r') && !q){ if(ch==='\r' && text[i+1]==='\n') i++; row.push(cell); rows.push(row); row=[]; cell=''; } else cell+=ch; } if(cell||row.length){ row.push(cell); rows.push(row);} return rows; }
+$('importer').onchange = async (e)=>{
+  const f=e.target.files[0]; if(!f) return; try{
+    const text=await f.text();
+    if(f.name.toLowerCase().endsWith('.json')){
+      const imported=JSON.parse(text); if(!Array.isArray(imported.books)||!Array.isArray(imported.shelves)||!Array.isArray(imported.sessions)) throw new Error('Copia inválida');
+      if(confirm('¿Reemplazar tus datos actuales con esta copia?')){ data=imported; shelfId=data.shelves[0]?.id||'default'; rerender(); }
+    } else {
+      const [head,...rows]=parseCSV(text.replace(/^\uFEFF/,'')); const ix=k=>head.indexOf(k); const val=(r,k)=>r[ix(k)]||''; if(ix('Title')<0) throw new Error('No encuentro la columna Title del CSV de Goodreads');
+      let count=0;
+      for(const r of rows){
+        const title=val(r,'Title').trim(), author=val(r,'Author').trim(), gid=val(r,'Book Id').trim();
+        if(!title) continue;
+        const isbn=(val(r,'ISBN13')||val(r,'ISBN')).replace(/[^0-9X]/gi,'');
+        const exists=data.books.some(b=>(gid && b.goodreadsId===gid) || (isbn && b.isbn===isbn) || (b.title===title && b.author===author));
+        if(exists) continue;
+        data.books.push({id:uid(),goodreadsId:gid,title,author,isbn,pages:+val(r,'Number of Pages')||0,current:0,status:BOOK_SHELF_MAP[val(r,'Exclusive Shelf')]||'Por leer',rating:+val(r,'My Rating')||0,notes:val(r,'My Review'),description:'',publisher:'',year:'',categories:val(r,'Bookshelves'),height:22,width:14,thick:3,color:'#7b5472',edgeColor:'#e6dbc7',display:'Lomo',shelf:activeShelf().id,row:0,format:'Tapa blanda',cover:'',spine:'',edge:'',back:'',top:'',bottom:'',stackCount:3,stackFace:'Portada',saga:'',collection:val(r,'Bookshelves')});
+        count++;
+      }
+      rerender(); toast(`${count} libros importados`);
+    }
+  }catch(err){ alert('No se pudo importar: '+err.message); }
+  e.target.value='';
+};
+
+if('serviceWorker' in navigator){ window.addEventListener('load', ()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{})); }
+/* esperar a que TODOS los scripts (extra*.js) estén cargados antes del primer render */
+const scriptsReady=new Promise(r=>document.readyState==='loading'?document.addEventListener('DOMContentLoaded',r,{once:true}):r());
+Promise.all([openDB().then(load),scriptsReady]).then(()=>{ applyTheme(); render(); }).catch(err=>{ console.error(err); alert('No pude abrir el almacenamiento local. Prueba en Chrome o Edge actualizados.'); });
+
+/* v0.6: instalación, almacenamiento persistente y cierre de hojas */
+let installEvt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;const c=$('installCard');if(c)c.hidden=false});
+window.addEventListener('appinstalled',()=>{installEvt=null;toast('App instalada')});
+async function installApp(){if(!installEvt)return;installEvt.prompt();await installEvt.userChoice;installEvt=null;const c=$('installCard');if(c)c.hidden=true}
+navigator.storage?.persist?.().catch(()=>{});
+$('dlg').addEventListener('click',e=>{if(e.target===$('dlg'))closeSheet()});
+const _render=render;render=function(){_render();if(installEvt){const c=$('installCard');if(c)c.hidden=false}};
+
+/* v0.7: Goodreads directo + recortador de fotos */
+async function searchGoodreads(q){
+  const u='https://www.goodreads.com/book/auto_complete?format=json&q='+encodeURIComponent(q);
+  const px=[x=>'https://corsproxy.io/?url='+encodeURIComponent(x),x=>'https://api.allorigins.win/raw?url='+encodeURIComponent(x)];
+  for(const p of px){try{const r=await fetch(p(u));if(!r.ok)continue;const j=await r.json();if(!Array.isArray(j)||!j.length)continue;
+    return j.slice(0,12).map(b=>({source:'goodreads',extId:String(b.bookId),title:b.bookTitleBare||b.title||'',author:b.author?.name||'',pages:0,isbn:'',description:'',published:'',publisher:'',categories:'',cover:String(b.imageUrl||'').replace(/\._S[XY]\d+_/,'').replace('http://','https://'),goodreadsUrl:b.bookUrl?'https://www.goodreads.com'+b.bookUrl:''}))}catch{}}
+  throw new Error('Goodreads no disponible');
+}
+const FACE_ASPECT=()=>{const h=draft.height||22,w=draft.width||14,t=draft.thick||3;return{cover:w/h,back:w/h,spine:t/h,edge:t/h,top:w/t,bottom:w/t}};
+function pickFace(key,input){const f=input.files[0];input.value='';if(!f)return;cropImage(f,FACE_ASPECT()[key]).then(x=>{if(x){draft[key]=x;drawCube();toast('Foto ajustada');window.onFaceSaved&&onFaceSaved()}})}
+function cropImage(file,aspect){return new Promise(resolve=>{
+  const img=new Image(),url=URL.createObjectURL(file);
+  img.onerror=()=>{URL.revokeObjectURL(url);toast('No pude abrir esa imagen');resolve(null)};
+  img.onload=()=>{
+    let W=Math.min(innerWidth-40,360),H=W/aspect;const mh=innerHeight*.5;if(H>mh){H=mh;W=H*aspect}
+    const d=document.createElement('dialog');d.className='cropdlg';
+    d.innerHTML=`<div class="cropbox"><div class="cropbar"><button class="mini-btn" data-a="x">Cancelar</button><strong>Ajusta la foto</strong><button class="btn-soft" data-a="ok">Usar</button></div><canvas width="${Math.round(W*2)}" height="${Math.round(H*2)}" style="width:${W}px;height:${H}px"></canvas><div class="croptools"><input type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom"><button class="mini-btn" data-a="rot">Girar 90°</button></div><div class="small muted">Arrastra para mover · pellizca o usa el control para acercar</div></div>`;
+    document.body.appendChild(d);d.showModal();
+    const cv=d.querySelector('canvas'),cx=cv.getContext('2d'),rg=d.querySelector('input');let rot=0,zoom=1,ox=0,oy=0,pd=0;const P=new Map();
+    const clamp=()=>{const r=rot%2,iw=r?img.height:img.width,ih=r?img.width:img.height,s=Math.max(W/iw,H/ih)*zoom,mx=Math.max(0,(iw*s-W)/2),my=Math.max(0,(ih*s-H)/2);ox=Math.max(-mx,Math.min(mx,ox));oy=Math.max(-my,Math.min(my,oy));return s};
+    const paint=(c,k)=>{const s=clamp();c.setTransform(k,0,0,k,0,0);c.fillStyle='#000';c.fillRect(0,0,W,H);c.translate(W/2+ox,H/2+oy);c.rotate(rot*Math.PI/2);c.scale(s,s);c.drawImage(img,-img.width/2,-img.height/2);c.setTransform(1,0,0,1,0,0)};
+    const draw=()=>paint(cx,cv.width/W);draw();
+    cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);P.set(e.pointerId,[e.clientX,e.clientY]);pd=0};
+    cv.onpointermove=e=>{const o=P.get(e.pointerId);if(!o)return;const n=[e.clientX,e.clientY];if(P.size===1){ox+=n[0]-o[0];oy+=n[1]-o[1]}P.set(e.pointerId,n);if(P.size===2){const[a,b]=[...P.values()],dd=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pd)zoom=Math.max(1,Math.min(4,zoom*dd/pd));pd=dd;rg.value=zoom}draw()};
+    cv.onpointerup=cv.onpointercancel=e=>{P.delete(e.pointerId);pd=0};
+    cv.onwheel=e=>{e.preventDefault();zoom=Math.max(1,Math.min(4,zoom*(e.deltaY<0?1.08:.93)));rg.value=zoom;draw()};
+    rg.oninput=()=>{zoom=+rg.value;draw()};
+    const done=out=>{d.close();d.remove();URL.revokeObjectURL(url);resolve(out)};
+    d.addEventListener('cancel',e=>{e.preventDefault();done(null)});
+    d.onclick=e=>{const a=e.target.dataset?.a;if(a==='rot'){rot=(rot+1)%4;ox=oy=0;draw()}else if(a==='x')done(null);else if(a==='ok'){const k=Math.min(4,1400/Math.max(W,H)),c=document.createElement('canvas');c.width=Math.round(W*k);c.height=Math.round(H*k);paint(c.getContext('2d'),k);done(c.toDataURL('image/jpeg',.9))}};
+  };img.src=url;
+})}

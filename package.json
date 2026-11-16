@@ -1,0 +1,10 @@
+{
+  "name": "arcane-reads-android",
+  "version": "2.9.12",
+  "private": true,
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  }
+}
