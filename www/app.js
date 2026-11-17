@@ -314,7 +314,7 @@ function normalizeCover(url){return url ? url.replace('http://','https://') : ''
 function stripHtml(html){const div=document.createElement('div'); div.innerHTML=html; return div.textContent || div.innerText || '';}
 function importSearchResult(results, index){
   const r = results[index];
-  const book={id:uid(), title:r.title, author:r.author, isbn:r.isbn||'', pages:r.pages||0, current:0, status:'Por leer', description:r.description||'', publisher:r.publisher||'', year:String(r.published||''), categories:r.categories||'', height:22,width:14,thick:3,color:'#7b5472',edgeColor:'#e6dbc7',display:'Lomo',shelf:activeShelf().id,row:0,format:'Tapa blanda',rating:0,notes:'',saga:'',collection:'', cover:r.cover||'', source:r.source, sourceId:r.extId, goodreadsUrl:r.goodreadsUrl||window.pendingGoodreadsUrl||'', stackCount:3, stackFace:'Portada'};
+  const book={id:uid(), title:r.title, author:r.author, isbn:r.isbn||'', pages:r.pages||0, current:0, status:'Por leer', description:r.description||'', publisher:r.publisher||'', year:String(r.published||''), categories:r.categories||'', height:22,width:14,thick:3,color:'#7b5472',edgeColor:'#e6dbc7',display:'Portada',shelf:activeShelf().id,row:0,format:'Tapa blanda',rating:0,notes:'',saga:'',collection:'', cover:r.cover||'', source:r.source, sourceId:r.extId, goodreadsUrl:r.goodreadsUrl||window.pendingGoodreadsUrl||'', stackCount:3, stackFace:'Portada'};
   if(data.books.some(b => (book.isbn && b.isbn===book.isbn) || (!book.isbn && b.source===book.source && b.sourceId===book.sourceId)) && !confirm('Ya tienes una ficha de esta edición. ¿Añadir otro ejemplar?')) return;
   data.books.push(book); closeSheet(); rerender(); setTimeout(()=>editBook(book.id),120);
 }
@@ -513,7 +513,7 @@ $('importer').onchange = async (e)=>{
         const isbn=(val(r,'ISBN13')||val(r,'ISBN')).replace(/[^0-9X]/gi,'');
         const exists=data.books.some(b=>(gid && b.goodreadsId===gid) || (isbn && b.isbn===isbn) || (b.title===title && b.author===author));
         if(exists) continue;
-        data.books.push({id:uid(),goodreadsId:gid,title,author,isbn,pages:+val(r,'Number of Pages')||0,current:0,status:BOOK_SHELF_MAP[val(r,'Exclusive Shelf')]||'Por leer',rating:+val(r,'My Rating')||0,notes:val(r,'My Review'),description:'',publisher:'',year:'',categories:val(r,'Bookshelves'),height:22,width:14,thick:3,color:'#7b5472',edgeColor:'#e6dbc7',display:'Lomo',shelf:activeShelf().id,row:0,format:'Tapa blanda',cover:'',spine:'',edge:'',back:'',top:'',bottom:'',stackCount:3,stackFace:'Portada',saga:'',collection:val(r,'Bookshelves')});
+        data.books.push({id:uid(),goodreadsId:gid,title,author,isbn,pages:+val(r,'Number of Pages')||0,current:0,status:BOOK_SHELF_MAP[val(r,'Exclusive Shelf')]||'Por leer',rating:+val(r,'My Rating')||0,notes:val(r,'My Review'),description:'',publisher:'',year:'',categories:val(r,'Bookshelves').split(',').map(s=>s.trim()).filter(s=>s&&!/^(to-read|currently-reading|read|did-not-finish|dnf)$/i.test(s)).join(', '),height:22,width:14,thick:3,color:'#7b5472',edgeColor:'#e6dbc7',display:'Lomo',shelf:activeShelf().id,row:0,format:'Tapa blanda',cover:'',spine:'',edge:'',back:'',top:'',bottom:'',stackCount:3,stackFace:'Portada',saga:'',collection:val(r,'Bookshelves').split(',').map(s=>s.trim()).filter(s=>s&&!/^(to-read|currently-reading|read|did-not-finish|dnf)$/i.test(s)).join(', ')});
         count++;
       }
       rerender(); toast(`${count} libros importados`);

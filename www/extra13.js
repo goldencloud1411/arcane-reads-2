@@ -1,6 +1,6 @@
 /* Arcane Reads v2.5 — sagas y colecciones: orden A–Z, progreso, "Ver todo", continuar saga */
 (function(){
-const art=n=>String(n||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/^(the|a|an|el|la|los|las|un|una)\s+/,'');
+const art=n=>String(n||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const vol=b=>+b.sagaN>0?+b.sagaN:9999,yr=b=>parseInt(b.year,10)||9999,tc=(a,b)=>String(a.title||'').localeCompare(b.title||'','es');
 function groups(kind){const m=new Map();data.books.forEach(b=>listOf(b,kind).forEach(n=>{if(!m.has(n))m.set(n,[]);m.get(n).push(b)}));
   return[...m.entries()].map(([name,bs])=>{bs=bs.slice().sort(kind==='saga'?(a,b)=>vol(a)-vol(b)||yr(a)-yr(b)||tc(a,b):tc);const read=bs.filter(b=>b.status==='Leído').length,reading=bs.some(b=>b.status==='Leyendo');

@@ -5,11 +5,11 @@ const tot=b=>(+b.audioMins||0)+(+b.audioSecs||0)/60;
 const heard=b=>(data.sessions||[]).filter(s=>s.bookId===b.id).reduce((a,s)=>a+(+(s.minutes||s.mins||s.duration||s.min)||0)+(+s.secs||0)/60,0);
 const prog=b=>b.status==='Leído'?100:tot(b)?Math.min(100,Math.round(heard(b)/tot(b)*100)):null;
 const st=document.createElement('style');
-st.textContent='.hbook.au-sq .hcov{height:auto!important;aspect-ratio:1/1!important;border-radius:12px!important}.hbook.au-sq .hcov img{object-fit:cover!important}.book-card.au-sq .book-cover{aspect-ratio:1/1!important;max-height:none!important;border-radius:12px;overflow:hidden}.book-card.au-sq .book-cover img{object-fit:cover!important;width:100%;height:100%}.gg .hbook.au-sq .hcov{aspect-ratio:1/1!important}';
+st.textContent='.hbook.au-fx .hcov{height:auto!important;aspect-ratio:1/1!important;border-radius:12px!important}.hbook.au-fx .hcov img{object-fit:cover!important}.book-card.au-fx .book-cover{aspect-ratio:1/1!important;max-height:none!important;border-radius:12px;overflow:hidden}.book-card.au-fx .book-cover img{object-fit:cover!important;width:100%;height:100%}.gg .hbook.au-fx .hcov{aspect-ratio:1/1!important}';
 document.head.appendChild(st);
 const idOf=el=>el.dataset.id||((el.getAttribute('onclick')||'').match(/\('([^']+)'\)/)||[])[1]||'';
 function cover(el,b,sel){
-  const c=el.querySelector(sel);if(!c)return;el.classList.add('au-sq');
+  const c=el.querySelector(sel);if(!c)return;el.classList.add('au-fx');
   const src=(b.audio&&b.audio.cover)||b.cover||'';if(!src)return;
   let img=c.querySelector('img');
   if(img){if(img.getAttribute('src')!==src)img.setAttribute('src',src)}
