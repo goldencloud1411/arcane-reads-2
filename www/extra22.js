@@ -30,8 +30,11 @@ const to10=i=>{i=String(i||'').replace(/[^0-9X]/gi,'').toUpperCase();if(i.length
 async function amazon(isbn){const i=to10(isbn);if(!i)return'';for(const u of[`https://images-na.ssl-images-amazon.com/images/P/${i}.01.LZZZZZZZ.jpg`,`https://m.media-amazon.com/images/P/${i}.01.L.jpg`])if(await imgOk(u))return u;return''}
 const PROX=[u=>'https://api.allorigins.win/raw?url='+enc(u),u=>'https://corsproxy.io/?url='+enc(u),u=>'https://api.codetabs.com/v1/proxy?quest='+enc(u)],pf=[0,0,0],pok=[0,0,0];
 async function viaProxy(u){for(let k=0;k<PROX.length;k++){if(pf[k]>=4&&!pok[k])continue;try{const c=new AbortController(),t=setTimeout(()=>c.abort(),8000);const r=await fetch(PROX[k](u),{signal:c.signal});clearTimeout(t);if(!r.ok){pf[k]++;continue}const x=await r.text();if(x&&x.length>2000){pok[k]++;return x}pf[k]++}catch(e){pf[k]++}}ERR++;return''}
-async function grPage(b){const url=b.goodreadsUrl||(b.goodreadsId?'https://www.goodreads.com/book/show/'+b.goodreadsId:'');if(!url)return'';const h=await viaProxy(url);if(!h)return'';
-  const m=h.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)||h.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);if(!m)return'';
+const PX5=[x=>'https://api.allorigins.win/raw?url='+enc(x),x=>'https://api.allorigins.win/get?url='+enc(x),x=>'https://corsproxy.io/?url='+enc(x),x=>'https://api.codetabs.com/v1/proxy?quest='+enc(x),x=>'https://thingproxy.freeboard.io/fetch/'+x];
+function pageVia(u){const cs=[];const mk=p=>new Promise(async(res,rej)=>{try{const c=new AbortController(),tm=setTimeout(()=>c.abort(),9000);cs.push(c);const r=await fetch(p(u),{signal:c.signal});clearTimeout(tm);if(!r.ok)return rej();let h=await r.text();if(h[0]==='{'){try{h=JSON.parse(h).contents||''}catch(e){}}if(h.length>3000)res(h);else rej()}catch(e){rej()}});
+  return Promise.any(PX5.map(mk)).then(h=>{cs.forEach(c=>c.abort());return h}).catch(()=>{ERR++;return''})}
+async function grPage(b){const url=b.goodreadsUrl||(b.goodreadsId?'https://www.goodreads.com/book/show/'+b.goodreadsId:'');if(!url)return'';const h=await pageVia(url);if(!h)return'';
+  const m=h.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)||h.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)||h.match(/"imageUrl":"(https:[^"]+)"/);if(!m)return'';
   const u=m[1].replace(/&amp;/g,'&').replace('http://','https://');if(/nophoto|no-cover/i.test(u))return'';return await imgOk(u)?u:''}
 async function olIsbn(isbn){const u=`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`;return await imgOk(u)?u:''}
 async function gbCover(q,want){const j=await getJSON('https://www.googleapis.com/books/v1/volumes?maxResults=6&printType=books&q='+enc(q));
@@ -64,8 +67,8 @@ window.findMissingCovers=async function(force){
   ERR=0;running=true;let done=0,found=0,i=0;stat(`Buscando portadas… 0/${list.length}`);
   const worker=async()=>{while(i<list.length){const b=list[i++];
     try{const e0=ERR,u=await coverFor(b);if(ERR===e0)b.coverTried=Date.now();if(u){b.cover=u;b.coverAuto=1;if(!b.spine&&(b.display==='Lomo'||!b.display))b.display='Portada';found++}}catch(e){}
-    done++;stat(`Buscando portadas… ${done}/${list.length}`);if(done%25===0){persist();try{render()}catch(e){}}await sleep(250)}};
-  await Promise.all([worker(),worker(),worker()]);running=false;persist();try{rerender()}catch(e){}
+    done++;stat(`Buscando portadas… ${done}/${list.length}`);if(done%25===0){persist();try{render()}catch(e){}}await sleep(800)}};
+  await Promise.all([worker(),worker()]);running=false;persist();try{rerender()}catch(e){}
   const errN=ERR;const left=(data.books||[]).filter(b=>!b.cover&&b.format!=='Audiolibro').length;stat((found?`Listo: ${found} portada${found===1?'':'s'} nueva${found===1?'':'s'} ✦`:'No encontré portadas nuevas')+(left?` · faltan ${left}`:'')+(errN?` · ${errN} consultas fallaron`:''),true)};
 
 /* ── 3) después de importar de Goodreads: normalizar y buscar portadas ── */
@@ -80,8 +83,11 @@ let ft=0;const fitSoon=()=>{clearTimeout(ft);ft=setTimeout(fit2,300)};
 document.addEventListener('load',e=>{if(e.target&&e.target.tagName==='IMG'&&document.querySelector('.immersive'))fitSoon()},true);
 const _r=render;render=function(){normAll();_r();
   const s=[...document.querySelectorAll('.switch-row strong')].find(x=>/Datos de la biblioteca/.test(x.textContent));
-  if(s){const row=s.closest('.switch-row');if(row&&!row.nextElementSibling?.classList.contains('cov-row'))row.insertAdjacentHTML('afterend','<div class="switch-row cov-row"><div><strong>Portadas</strong><div class="muted small">Buscar las que falten</div></div><button class="mini-btn" onclick="findMissingCovers(true)">Buscar</button></div>')}
+  if(s){const row=s.closest('.switch-row');if(row&&!row.nextElementSibling?.classList.contains('cov-row'))row.insertAdjacentHTML('afterend','<div class="switch-row cov-row"><div><strong>Portadas</strong><div class="muted small">Buscar las que falten</div></div><div style="display:flex;gap:8px"><button class="mini-btn" onclick="findMissingCovers(true)">Buscar</button><button class="mini-btn" onclick="showMissingCovers()">Ver faltantes</button></div></div>')}
   wall();setTimeout(fit2,450);setTimeout(fit2,1500)};
+function perfilBtn(){const s=[...document.querySelectorAll('.switch-row strong')].find(x=>/Datos de la biblioteca/.test(x.textContent));if(!s)return;const row=s.closest('.switch-row');
+  if(row&&!(row.nextElementSibling&&row.nextElementSibling.classList.contains('cov-row')))row.insertAdjacentHTML('afterend','<div class="switch-row cov-row"><div><strong>Portadas</strong><div class="muted small">Buscar las que falten</div></div><div style="display:flex;gap:8px"><button class="mini-btn" onclick="findMissingCovers(true)">Buscar</button><button class="mini-btn" onclick="showMissingCovers()">Ver faltantes</button></div></div>')}
+let pt=0;new MutationObserver(()=>{clearTimeout(pt);pt=setTimeout(perfilBtn,150)}).observe(document.body,{childList:true,subtree:true});
 addEventListener('resize',fitSoon);
 setTimeout(()=>findMissingCovers(false),6000);addEventListener('online',()=>setTimeout(()=>findMissingCovers(false),2000));
 
@@ -106,30 +112,37 @@ const gb=id=>getBook(id);
 async function byIsbn(isbn){isbn=String(isbn||'').replace(/[^0-9X]/gi,'');if(!isbn)return'';
   for(const f of[()=>olIsbn(isbn),()=>amazon(isbn),()=>gbCover('isbn:'+isbn,'')]){try{const u=await f();if(u)return u}catch(e){}}return''}
 const shrink=file=>new Promise((res,rej)=>{const r=new FileReader();r.onerror=rej;r.onload=()=>{const im=new Image();im.onerror=rej;im.onload=()=>{const k=Math.min(1,700/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.85))};im.src=r.result};r.readAsDataURL(file)});
-const toolsBack=id=>{closeSheet();setTimeout(()=>bookDetails(id),60)};
-const applyCover=(id,u)=>{const b=gb(id);if(!b||!u)return;b.cover=u;b.coverAuto=0;if(!b.spine&&(b.display==='Lomo'||!b.display))b.display='Portada';closeSheet();rerender();setTimeout(()=>bookDetails(id),60);toast('Portada actualizada')};
-window.coverTools=id=>{const b=gb(id);if(!b)return;
+let fromList=false;
+const toolsBack=id=>{closeSheet();setTimeout(()=>fromList?window.showMissingCovers():bookDetails(id),60)};
+const applyCover=(id,u)=>{const b=gb(id);if(!b||!u)return;b.cover=u;b.coverAuto=0;if(!b.spine&&(b.display==='Lomo'||!b.display))b.display='Portada';closeSheet();rerender();setTimeout(()=>fromList?window.showMissingCovers():bookDetails(id),60);toast('Portada actualizada')};
+window.coverTools=(id,fromDetail)=>{const b=gb(id);if(!b)return;if(fromDetail)fromList=false;
   showSheet(`<div class="sheet-header"><div><h2>Portada</h2><div class="muted small">${esc(b.title)}</div></div><button class="sheet-close" onclick="coverToolsBack('${id}')">×</button></div>
   <div class="ss-form" style="display:grid;gap:10px">
    <div id="cvPrev" class="muted small" style="min-height:20px"></div>
    <label>ISBN</label><input id="cvIsbn" inputmode="text" placeholder="978…" value="${esc(b.isbn||'')}">
    <button class="btn-soft" type="button" onclick="coverByIsbn('${id}')">Buscar portada con el ISBN</button>
    <button class="btn-soft" type="button" onclick="coverByTitle('${id}')">Buscar por título y autor</button>
-   <label>…o pega el enlace de una imagen</label><input id="cvUrl" type="url" placeholder="https://…">
+   <label>…o pega el enlace de Goodreads o de una imagen</label><input id="cvUrl" type="url" placeholder="https://…" value="${esc(b.goodreadsUrl||(b.goodreadsId?'https://www.goodreads.com/book/show/'+b.goodreadsId:''))}">
    <button class="mini-btn" type="button" onclick="coverByUrl('${id}')">Usar este enlace</button>
    <label>…o elige una foto de tu galería</label><input id="cvFile" type="file" accept="image/*">
   </div>`);
   const f=document.getElementById('cvFile');if(f)f.onchange=async()=>{if(!f.files[0])return;try{applyCover(id,await shrink(f.files[0]))}catch(e){document.getElementById('cvPrev').textContent='No pude leer esa imagen.'}}};
 window.coverToolsBack=toolsBack;
+window.showMissingCovers=()=>{const L=(data.books||[]).filter(b=>!b.cover&&b.format!=='Audiolibro').sort((a,b)=>String(a.title).localeCompare(String(b.title)));fromList=true;
+  const rows=L.map(b=>`<div class="ss-row"><div><b>${esc(b.title)}</b><span>${esc(b.author||'')}${b.isbn?' · ISBN '+esc(b.isbn):''}</span></div><button class="mini-btn" type="button" onclick="coverTools('${b.id}')">Portada</button></div>`).join('');
+  showSheet(`<div class="sheet-header"><div><h2>Sin portada</h2><div class="muted small">${L.length?L.length+' libro'+(L.length===1?'':'s'):'Todos tus libros tienen portada ✦'}</div></div><button class="sheet-close" onclick="fromListOff()">×</button></div><div class="ss-sec">${rows}</div>`)};
+window.fromListOff=()=>{fromList=false;closeSheet()};
 const prevMsg=t=>{const p=document.getElementById('cvPrev');if(p)p.textContent=t};
 window.coverByIsbn=async id=>{const isbn=(document.getElementById('cvIsbn').value||'').trim();if(!isbn)return prevMsg('Escribe un ISBN.');prevMsg('Buscando…');
   const b=gb(id);if(b&&isbn.replace(/[^0-9X]/gi,'')!==String(b.isbn||'').replace(/[^0-9X]/gi,'')){b.isbn=isbn.replace(/[^0-9X]/gi,'')}
   const u=await byIsbn(isbn);u?applyCover(id,u):prevMsg('No encontré portada con ese ISBN. Prueba con otro ISBN, un enlace o una foto.')};
-window.coverByTitle=async id=>{const b=gb(id);prevMsg('Buscando…');ERR=0;const u=await coverFor(b);u?applyCover(id,u):prevMsg(ERR?'Fallaron algunas consultas de red. Revisa tu conexión e inténtalo de nuevo.':'No encontré portada por título. Prueba con el ISBN, un enlace o una foto.')};
-window.coverByUrl=async id=>{const u=(document.getElementById('cvUrl').value||'').trim();if(!/^https?:\/\//i.test(u))return prevMsg('Pega un enlace que empiece con https://');prevMsg('Comprobando…');await imgOk(u)?applyCover(id,u):prevMsg('Esa imagen no se pudo cargar.')};
+window.coverByTitle=async id=>{const b=gb(id);prevMsg('Buscando…');ERR=0;const u=await coverFor(b);u?applyCover(id,u):prevMsg(ERR?'No la encontré y algunas consultas fallaron (puede ser tu conexión o que los servicios gratuitos están saturados). Prueba con el enlace de Goodreads de abajo o con una foto.':'No encontré portada por título. Prueba con el enlace de Goodreads, el ISBN o una foto.')};
+window.coverByUrl=async id=>{const u=(document.getElementById('cvUrl').value||'').trim();if(!/^https?:\/\//i.test(u))return prevMsg('Pega un enlace que empiece con https://');prevMsg('Comprobando…');
+  if(/goodreads\.com\/book\/show\//i.test(u)){ERR=0;const g=await grPage({goodreadsUrl:u});return g?applyCover(id,g):prevMsg(ERR?'Goodreads no respondió por ahora. Inténtalo de nuevo en un minuto o usa una foto de tu galería.':'Esa página de Goodreads no tiene portada.')}
+  await imgOk(u)?applyCover(id,u):prevMsg('Esa imagen no se pudo cargar.')};
 new MutationObserver(()=>{const db=document.querySelector('.dt-body');if(!db||db.querySelector('.cov-sec'))return;
   const btn=document.querySelector('.dt-bar [onclick*="startSession("]'),m=btn&&(btn.getAttribute('onclick')||'').match(/'([^']+)'/);if(!m)return;
-  const html=`<section class="cov-sec" style="display:grid;gap:8px;margin:6px 0"><button class="mini-btn" type="button" onclick="coverTools('${m[1]}')">Cambiar o buscar portada (ISBN)</button></section>`;
+  const html=`<section class="cov-sec" style="display:grid;gap:8px;margin:6px 0"><button class="mini-btn" type="button" onclick="coverTools('${m[1]}',true)">Cambiar o buscar portada (ISBN)</button></section>`;
   const a=db.querySelector('.ss-sec');a?a.insertAdjacentHTML('beforebegin',html):db.insertAdjacentHTML('beforeend',html)}).observe($('dlg'),{childList:true,subtree:true});
 
 /* ── 8) foto de fondo de la estantería: una capa fija del tamaño de la pantalla (sin zoom) ── */
