@@ -52,7 +52,7 @@ window.findMissingCovers=async function(force){
     try{const u=await coverFor(b);b.coverTried=Date.now();if(u){b.cover=u;b.coverAuto=1;if(!b.spine&&(b.display==='Lomo'||!b.display))b.display='Portada';found++}}catch(e){}
     done++;stat(`Buscando portadas… ${done}/${list.length}`);if(done%25===0){persist();try{render()}catch(e){}}await sleep(250)}};
   await Promise.all([worker(),worker(),worker()]);running=false;persist();try{rerender()}catch(e){}
-  stat(found?`Listo: ${found} portada${found===1?'':'s'} nueva${found===1?'':'s'} ✦`:'No encontré portadas nuevas',true)};
+  const left=(data.books||[]).filter(b=>!b.cover&&b.format!=='Audiolibro').length;stat((found?`Listo: ${found} portada${found===1?'':'s'} nueva${found===1?'':'s'} ✦`:'No encontré portadas nuevas')+(left?` · faltan ${left}`:''),true)};
 
 /* ── 3) después de importar de Goodreads: normalizar y buscar portadas ── */
 const imp=$('importer');if(imp&&imp.onchange){const old=imp.onchange;imp.onchange=async function(e){await old.call(this,e);if(normAll())rerender();setTimeout(()=>findMissingCovers(false),600)}}
@@ -72,15 +72,19 @@ addEventListener('resize',fitSoon);
 setTimeout(()=>findMissingCovers(false),6000);addEventListener('online',()=>setTimeout(()=>findMissingCovers(false),2000));
 
 /* ── 5) botón/gesto "atrás": cierra hojas y sub-vistas en vez de cerrar la app ── */
-let t0=0;const arm=()=>{try{history.pushState({arc:1},'')}catch(e){}};
+/* Android ignora las entradas de historial creadas sin que el usuario toque la pantalla,
+   así que la entrada "centinela" se agrega durante un toque real (y se repone en el siguiente toque). */
+let armed=false;
+const arm=()=>{if(armed)return;try{history.pushState({arc:1},'');armed=true}catch(e){}};
+['pointerup','touchend','click'].forEach(ev=>document.addEventListener(ev,arm,true));
 addEventListener('popstate',()=>{
+  armed=false;
   const d=$('dlg');
-  if(d&&d.open){closeSheet();arm();return}
+  if(d&&d.open){closeSheet();return}
   const vol=[...document.querySelectorAll('button')].find(b=>b.offsetParent&&/^[‹<]?\s*Volver\b/.test(b.textContent.trim()));
-  if(vol){vol.click();arm();return}
-  if(typeof tab!=='undefined'&&tab!=='Inicio'){setTab('Inicio');arm();return}
-  toast('Desliza otra vez para salir');clearTimeout(t0);t0=setTimeout(arm,2500)});
-setTimeout(arm,800);
+  if(vol){vol.click();return}
+  if(typeof tab!=='undefined'&&tab!=='Inicio'){setTab('Inicio');return}
+  toast('Desliza otra vez para salir')});
 
 /* ── 6) estilos: franja de la barra de estado, X de las hojas, indicador de portadas ── */
 const st=document.createElement('style');
