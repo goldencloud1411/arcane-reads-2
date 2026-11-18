@@ -2,7 +2,7 @@
 (function(){
 const art=n=>String(n||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const vol=b=>+b.sagaN>0?+b.sagaN:9999,yr=b=>parseInt(b.year,10)||9999,tc=(a,b)=>String(a.title||'').localeCompare(b.title||'','es');
-function groups(kind){const m=new Map();data.books.forEach(b=>listOf(b,kind).forEach(n=>{if(!m.has(n))m.set(n,[]);m.get(n).push(b)}));
+function groups(kind){const m=new Map();data.books.forEach(b=>listOf(b,kind).forEach(n=>{if(!m.has(n))m.set(n,[]);if(!m.get(n).includes(b))m.get(n).push(b)}));
   return[...m.entries()].map(([name,bs])=>{bs=bs.slice().sort(kind==='saga'?(a,b)=>vol(a)-vol(b)||yr(a)-yr(b)||tc(a,b):tc);const read=bs.filter(b=>b.status==='Leído').length,reading=bs.some(b=>b.status==='Leyendo');
     return{name,books:bs,read,total:bs.length,pct:Math.round(read/bs.length*100),complete:read===bs.length,reading,cur:bs.find(b=>b.status==='Leyendo'),next:bs.find(b=>b.status==='Por leer'),authors:[...new Set(bs.map(b=>b.author).filter(Boolean))],idx:Math.max(...bs.map(b=>data.books.indexOf(b)))}})}
 const KT={saga:'Sagas',collection:'Colecciones'};

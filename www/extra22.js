@@ -1,6 +1,11 @@
 /* Arcane Reads v2.9.14 — portadas automáticas, sagas desde el título, colecciones limpias,
    estantería por portada, botón "atrás" del teléfono y ajustes de pantalla completa */
 (function(){
+const NATIVE=!!(window.Capacitor&&typeof window.Capacitor.isNativePlatform==='function'&&window.Capacitor.isNativePlatform());
+(function(){if(!NATIVE)return;const _f=window.fetch.bind(window);
+  const unwrap=u=>{let m;if(m=u.match(/^https:\/\/corsproxy\.io\/\?url=(.+)$/))return[decodeURIComponent(m[1]),'raw'];if(m=u.match(/^https:\/\/api\.allorigins\.win\/raw\?url=(.+)$/))return[decodeURIComponent(m[1]),'raw'];if(m=u.match(/^https:\/\/api\.allorigins\.win\/get\?url=(.+)$/))return[decodeURIComponent(m[1]),'get'];if(m=u.match(/^https:\/\/api\.codetabs\.com\/v1\/proxy\?quest=(.+)$/))return[decodeURIComponent(m[1]),'raw'];if(m=u.match(/^https:\/\/thingproxy\.freeboard\.io\/fetch\/(.+)$/))return[m[1],'raw'];return null};
+  window.fetch=function(inp,init){const u=typeof inp==='string'?inp:(inp&&inp.url)||'',w=u&&unwrap(u);if(!w)return _f(inp,init);
+    return _f(w[0],init).then(async r=>{if(!r.ok)return _f(inp,init);if(w[1]==='get'){const t=await r.text();return new Response(JSON.stringify({contents:t,status:{http_code:r.status}}),{status:200,headers:{'Content-Type':'application/json'}})}return r}).catch(()=>_f(inp,init))}})();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)),enc=encodeURIComponent;
 const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
 const good=(want,got)=>{const w=norm(want),g=norm(got);if(!w||!g)return false;const k=w.split(' ').filter(x=>x.length>2).slice(0,3);return k.length?k.every(x=>g.includes(x)):g.includes(w)};
@@ -59,17 +64,18 @@ async function coverFor(b){
   for(const f of T){try{const u=await f();if(u)return u}catch(e){}}return''}
 function stat(msg,end){let e=document.getElementById('covStat');if(!e){e=document.createElement('div');e.id='covStat';document.body.appendChild(e)}e.textContent=msg;e.classList.add('on');if(end)setTimeout(()=>e.classList.remove('on'),3800)}
 let running=false;
-window.findMissingCovers=async function(force){
+window.findMissingCovers=async function(force,pass){pass=pass||1;
   if(running){if(force)toast('Ya estoy buscando portadas…');return}
   if(!navigator.onLine){if(force)toast('Sin conexión a internet');return}
   const list=(data.books||[]).filter(b=>!b.cover&&b.format!=='Audiolibro'&&(force||!b.coverTried||Date.now()-b.coverTried>3*864e5));
   if(!list.length){if(force)toast('Todos tus libros ya tienen portada ✦');return}
-  ERR=0;running=true;let done=0,found=0,i=0;stat(`Buscando portadas… 0/${list.length}`);
+  ERR=0;running=true;let done=0,found=0,i=0;stat(`Buscando portadas${pass>1?' (pasada '+pass+')':''}… 0/${list.length}`);
   const worker=async()=>{while(i<list.length){const b=list[i++];
     try{const e0=ERR,u=await coverFor(b);if(ERR===e0)b.coverTried=Date.now();if(u){b.cover=u;b.coverAuto=1;if(!b.spine&&(b.display==='Lomo'||!b.display))b.display='Portada';found++}}catch(e){}
-    done++;stat(`Buscando portadas… ${done}/${list.length}`);if(done%25===0){persist();try{render()}catch(e){}}await sleep(800)}};
+    done++;stat(`Buscando portadas${pass>1?' (pasada '+pass+')':''}… ${done}/${list.length}`);if(done%25===0){persist();try{render()}catch(e){}}await sleep(800)}};
   await Promise.all([worker(),worker()]);running=false;persist();try{rerender()}catch(e){}
-  const errN=ERR;const left=(data.books||[]).filter(b=>!b.cover&&b.format!=='Audiolibro').length;stat((found?`Listo: ${found} portada${found===1?'':'s'} nueva${found===1?'':'s'} ✦`:'No encontré portadas nuevas')+(left?` · faltan ${left}`:'')+(errN?` · ${errN} consultas fallaron`:''),true)};
+  const errN=ERR;const left=(data.books||[]).filter(b=>!b.cover&&b.format!=='Audiolibro').length;
+  if(found>0&&left>0&&pass<6){stat(`Encontré ${found} · reintentando los ${left} que faltan…`);setTimeout(()=>findMissingCovers(true,pass+1),4000);return}stat((found?`Listo: ${found} portada${found===1?'':'s'} nueva${found===1?'':'s'} ✦`:'No encontré portadas nuevas')+(left?` · faltan ${left}`:'')+(errN?` · ${errN} consultas fallaron`:''),true)};
 
 /* ── 3) después de importar de Goodreads: normalizar y buscar portadas ── */
 const imp=$('importer');if(imp&&imp.onchange){const old=imp.onchange;imp.onchange=async function(e){await old.call(this,e);if(normAll())rerender();setTimeout(()=>findMissingCovers(false),600)}}
@@ -84,7 +90,7 @@ document.addEventListener('load',e=>{if(e.target&&e.target.tagName==='IMG'&&docu
 const _r=render;render=function(){normAll();_r();
   const s=[...document.querySelectorAll('.switch-row strong')].find(x=>/Datos de la biblioteca/.test(x.textContent));
   if(s){const row=s.closest('.switch-row');if(row&&!row.nextElementSibling?.classList.contains('cov-row'))row.insertAdjacentHTML('afterend','<div class="switch-row cov-row"><div><strong>Portadas</strong><div class="muted small">Buscar las que falten</div></div><div style="display:flex;gap:8px"><button class="mini-btn" onclick="findMissingCovers(true)">Buscar</button><button class="mini-btn" onclick="showMissingCovers()">Ver faltantes</button></div></div>')}
-  wall();setTimeout(fit2,450);setTimeout(fit2,1500)};
+  wall();swapImgs(document);setTimeout(fit2,450);setTimeout(fit2,1500)};
 function perfilBtn(){const s=[...document.querySelectorAll('.switch-row strong')].find(x=>/Datos de la biblioteca/.test(x.textContent));if(!s)return;const row=s.closest('.switch-row');
   if(row&&!(row.nextElementSibling&&row.nextElementSibling.classList.contains('cov-row')))row.insertAdjacentHTML('afterend','<div class="switch-row cov-row"><div><strong>Portadas</strong><div class="muted small">Buscar las que falten</div></div><div style="display:flex;gap:8px"><button class="mini-btn" onclick="findMissingCovers(true)">Buscar</button><button class="mini-btn" onclick="showMissingCovers()">Ver faltantes</button></div></div>')}
 let pt=0;new MutationObserver(()=>{clearTimeout(pt);pt=setTimeout(perfilBtn,150)}).observe(document.body,{childList:true,subtree:true});
@@ -92,19 +98,22 @@ addEventListener('resize',fitSoon);
 setTimeout(()=>findMissingCovers(false),6000);addEventListener('online',()=>setTimeout(()=>findMissingCovers(false),2000));
 
 /* ── 5) botón/gesto "atrás": cierra hojas y sub-vistas en vez de cerrar la app ── */
-/* Android ignora las entradas de historial creadas sin que el usuario toque la pantalla,
-   así que la entrada "centinela" se agrega durante un toque real (y se repone en el siguiente toque). */
+/* Qué hace el gesto "atrás": cierra hoja/visor, sale de una sub-vista o vuelve a Inicio.
+   En la app nativa lo llama MainActivity (window.__arcBack); en Chrome, el historial de la página. */
+let lastBack=0;
+function backAction(exitOnSecond){
+  const od=[...document.querySelectorAll('dialog[open]')].pop();
+  if(od){od===$('dlg')?closeSheet():od.close();return true}
+  const vol=[...document.querySelectorAll('button')].find(b=>b.offsetParent&&/^[‹<]?\s*Volver\b/.test(b.textContent.trim()));
+  if(vol){vol.click();return true}
+  if(typeof tab!=='undefined'&&tab!=='Inicio'){setTab('Inicio');return true}
+  if(exitOnSecond&&Date.now()-lastBack<2500)return false;
+  lastBack=Date.now();toast('Desliza otra vez para salir');return true}
+window.__arcBack=()=>backAction(true);
 let armed=false;
 const arm=()=>{if(armed)return;try{history.pushState({arc:1},'');armed=true}catch(e){}};
 ['pointerup','touchend','click'].forEach(ev=>document.addEventListener(ev,arm,true));
-addEventListener('popstate',()=>{
-  armed=false;
-  const d=$('dlg');
-  if(d&&d.open){closeSheet();return}
-  const vol=[...document.querySelectorAll('button')].find(b=>b.offsetParent&&/^[‹<]?\s*Volver\b/.test(b.textContent.trim()));
-  if(vol){vol.click();return}
-  if(typeof tab!=='undefined'&&tab!=='Inicio'){setTab('Inicio');return}
-  toast('Desliza otra vez para salir')});
+addEventListener('popstate',()=>{armed=false;backAction(false)});
 
 
 /* ── 7) detalle del libro: cambiar/buscar portada (ISBN, enlace o galería) ── */
@@ -142,7 +151,7 @@ window.coverByUrl=async id=>{const u=(document.getElementById('cvUrl').value||''
   await imgOk(u)?applyCover(id,u):prevMsg('Esa imagen no se pudo cargar.')};
 new MutationObserver(()=>{const db=document.querySelector('.dt-body');if(!db||db.querySelector('.cov-sec'))return;
   const btn=document.querySelector('.dt-bar [onclick*="startSession("]'),m=btn&&(btn.getAttribute('onclick')||'').match(/'([^']+)'/);if(!m)return;
-  const html=`<section class="cov-sec" style="display:grid;gap:8px;margin:6px 0"><button class="mini-btn" type="button" onclick="coverTools('${m[1]}',true)">Cambiar o buscar portada (ISBN)</button></section>`;
+  const html=`<section class="cov-sec" style="display:grid;gap:8px;margin:6px 0"><button class="mini-btn" type="button" onclick="coverTools('${m[1]}',true)">Cambiar o buscar portada (ISBN)</button>${gb(m[1])?grBlock(gb(m[1])):''}</section>`;
   const a=db.querySelector('.ss-sec');a?a.insertAdjacentHTML('beforebegin',html):db.insertAdjacentHTML('beforeend',html)}).observe($('dlg'),{childList:true,subtree:true});
 
 /* ── 8) foto de fondo de la estantería: una capa fija del tamaño de la pantalla (sin zoom) ── */
@@ -152,6 +161,34 @@ function wall(){const p=document.querySelector('.immersive .shelf-preview');let 
   if(!w){w=document.createElement('div');w.id='shelfWall';document.body.appendChild(w)}
   if(w.dataset.bi!==bi){w.style.backgroundImage=bi;w.dataset.bi=bi}
   p.classList.add('has-wall')}
+
+/* ── 9) caché local de portadas: se descargan una vez y se muestran al instante ── */
+const objMap=new Map(),queue=new Set(),failedAt=new Map();let cdb=null,pumping=0;
+const openCDB=()=>new Promise(res=>{try{const r=indexedDB.open('arcane-covers',1);r.onupgradeneeded=()=>r.result.createObjectStore('c');r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}});
+function swapImgs(root){(root||document).querySelectorAll('img').forEach(im=>{const u=im.getAttribute('src')||'';if(!/^https?:/i.test(u))return;const o=objMap.get(u);if(o){im.loading='eager';im.src=o}else enqueue(u)})}
+function enqueue(u){if(!u||!/^https?:/i.test(u)||objMap.has(u)||queue.has(u)||(failedAt.get(u)||0)>Date.now())return;queue.add(u);pump()}
+function pump(){while(queue.size&&pumping<3){const u=queue.values().next().value;queue.delete(u);pumping++;cacheUrl(u).finally(()=>{pumping--;setTimeout(pump,120)})}}
+async function cacheUrl(u){try{const c=new AbortController(),tm=setTimeout(()=>c.abort(),12000);const r=await fetch(u,{mode:'cors',signal:c.signal});clearTimeout(tm);if(!r.ok)throw 0;const b=await r.blob();if(b.size<800||!/^image\//.test(b.type))throw 0;
+  const o=URL.createObjectURL(b);if(!(await imgOk(o))){URL.revokeObjectURL(o);throw 0}
+  objMap.set(u,o);if(cdb)try{cdb.transaction('c','readwrite').objectStore('c').put(b,u)}catch(e){}swapImgs(document)}catch(e){failedAt.set(u,Date.now()+6*3600e3)}}
+(async function(){cdb=await openCDB();if(cdb)await new Promise(res=>{try{const rq=cdb.transaction('c','readonly').objectStore('c').openCursor();rq.onsuccess=()=>{const c=rq.result;if(c){objMap.set(c.key,URL.createObjectURL(c.value));c.continue()}else res()};rq.onerror=()=>res()}catch(e){res()}});
+  swapImgs(document);setTimeout(()=>{(data.books||[]).forEach(b=>{enqueue(b.cover);if(b.audio)enqueue(b.audio.cover)})},6000)})();
+let sw2=0;new MutationObserver(()=>{clearTimeout(sw2);sw2=setTimeout(()=>swapImgs(document),40)}).observe(document.body,{childList:true,subtree:true});
+
+/* ── 10) personajes, lugares y premios desde la ficha de Goodreads ── */
+function parseGrx(html){const out={c:[],p:[],a:[]};let J=null;const m=html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);try{J=m&&JSON.parse(m[1])}catch(e){}
+  if(!J)return out;const AS=(J.props&&J.props.pageProps&&J.props.pageProps.apolloState)||{},seen=new Set();
+  const nm=a=>(Array.isArray(a)?a:[]).map(x=>{if(x&&x.__ref)x=AS[x.__ref];return typeof x==='string'?x:(x&&(x.name||x.title))||''}).map(s=>String(s).trim()).filter(Boolean);
+  (function walk(o,d){if(!o||typeof o!=='object'||d>16||seen.has(o))return;seen.add(o);if(Array.isArray(o)){o.forEach(x=>walk(x,d+1));return}
+    for(const k in o){const v=o[k];if(k==='characters')out.c.push(...nm(v));else if(k==='places')out.p.push(...nm(v));else if(k==='awardsWon')out.a.push(...nm(v));if(v&&typeof v==='object')walk(v,d+1)}})(J,0);
+  const u=a=>[...new Set(a)].slice(0,40);out.c=u(out.c);out.p=u(out.p);out.a=u(out.a);return out}
+window.grExtra=async id=>{const b=gb(id);if(!b)return;const url=b.goodreadsUrl||(b.goodreadsId?'https://www.goodreads.com/book/show/'+b.goodreadsId:'');
+  if(!url)return toast('Este libro no tiene enlace de Goodreads. Agrégalo en Editar.');toast('Buscando en Goodreads…');const h=await pageVia(url);
+  if(!h)return toast('Goodreads no respondió. Inténtalo de nuevo en un minuto.');const x=parseGrx(h);
+  if(!x.c.length&&!x.p.length&&!x.a.length)return toast('No encontré personajes ni datos extra en esa página.');
+  b.grx={c:x.c,p:x.p,a:x.a,t:Date.now()};persist();closeSheet();rerender();setTimeout(()=>bookDetails(id),60)};
+const grBlock=b=>{const g=b.grx,L=(t,a)=>a&&a.length?`<div class="muted small"><b>${t}:</b> ${a.map(esc).join(', ')}</div>`:'';
+  return(g?L('Personajes',g.c)+L('Lugares',g.p)+L('Premios',g.a):'')+`<button class="mini-btn" type="button" onclick="grExtra('${b.id}')">${g?'Actualizar':'Traer'} personajes y datos de Goodreads</button>`};
 
 /* ── 6) estilos: franja de la barra de estado, X de las hojas, indicador de portadas ── */
 const st=document.createElement('style');

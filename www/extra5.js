@@ -4,7 +4,7 @@ const _sh3=showSheet;showSheet=function(h){$('dlg').classList.remove('detfull','
 /* ficha de detalles */
 const splitList=v=>[...new Set(String(v||'').split(/[\/,;]/).map(s=>s.trim()).filter(Boolean))];
 const tagsOf=b=>splitList(b.categories).filter(s=>s.length<40).slice(0,24);
-const listOf=(b,k)=>k==='tags'?(Array.isArray(b.tags)?b.tags:[]):k==='categories'?splitList(b.categories):String(b[k]||'').split(',').map(s=>s.trim()).filter(Boolean);
+const listOf=(b,k)=>k==='tags'?(Array.isArray(b.tags)?b.tags:[]):k==='categories'?splitList(b.categories):String(b[k]||'').split(k==='saga'?/[;|]/:',').map(s=>s.trim()).filter(Boolean);
 const pubTxt=b=>{if(b.pubDate){const d=new Date(b.pubDate+'T12:00:00Z');if(!isNaN(d))return d.toLocaleDateString('es',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'})}return b.year||''};
 const starsRO=n=>[1,2,3,4,5].map(i=>`<i class="${(n||0)>=i?'on':''}">★</i>`).join('');
 bookDetails=function(id){const b=getBook(id);if(!b)return;const draw=()=>{
