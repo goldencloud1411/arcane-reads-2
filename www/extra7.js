@@ -167,7 +167,7 @@ const _is=importSearchResult;importSearchResult=function(r,i){const n=data.books
 let busy=false;async function grAll(){if(busy||!navigator.onLine)return;busy=true;let n=0;
   for(const b of data.books){if(!needsSync(b)||(!b.goodreadsUrl&&!b.isbn)||(b.grTried&&Date.now()-b.grTried<216e5))continue;if(++n>12)break;await syncGoodreads(b);await new Promise(r=>setTimeout(r,1500))}
   busy=false;if(n)rerender()}
-setTimeout(grAll,7000);addEventListener('online',()=>setTimeout(grAll,2000));
+setTimeout(grAll,60000);addEventListener('online',()=>setTimeout(grAll,2000));
 
 /* búsqueda en "Libros" también por género, etiqueta, ISBN */
 filteredBooks=function(){const q=filters.query.toLowerCase();return sortBooks(data.books.filter(b=>(filters.status==='Todos'||b.status===filters.status)&&[b.title,b.author,b.saga,b.collection,b.categories,(b.tags||[]).join(' '),b.isbn].join(' ').toLowerCase().includes(q)))};
