@@ -161,11 +161,6 @@ window.coverByTitle=async id=>{const b=gb(id);prevMsg('Buscando…');ERR=0;const
 window.coverByUrl=async id=>{const u=(document.getElementById('cvUrl').value||'').trim();if(!/^https?:\/\//i.test(u))return prevMsg('Pega un enlace que empiece con https://');prevMsg('Comprobando…');
   if(/goodreads\.com\/book\/show\//i.test(u)){ERR=0;const g=await grPage({goodreadsUrl:u});return g?applyCover(id,g):prevMsg(ERR?'Goodreads no respondió por ahora. Inténtalo de nuevo en un minuto o usa una foto de tu galería.':'Esa página de Goodreads no tiene portada.')}
   await imgOk(u)?applyCover(id,u):prevMsg('Esa imagen no se pudo cargar.')};
-new MutationObserver(()=>{const db=document.querySelector('.dt-body');if(!db||db.querySelector('.cov-sec'))return;
-  const btn=document.querySelector('.dt-bar [onclick*="startSession("]'),m=btn&&(btn.getAttribute('onclick')||'').match(/'([^']+)'/);if(!m)return;
-  const html=`<section class="cov-sec" style="display:grid;gap:8px;margin:6px 0"><button class="mini-btn" type="button" onclick="coverTools('${m[1]}',true)">Cambiar o buscar portada (ISBN)</button>${gb(m[1])?hcBlock(gb(m[1]))+grBlock(gb(m[1])):''}</section>`;
-  const a=db.querySelector('.ss-sec');a?a.insertAdjacentHTML('beforebegin',html):db.insertAdjacentHTML('beforeend',html)}).observe($('dlg'),{childList:true,subtree:true});
-
 /* ── 8) foto de fondo de la estantería: una capa fija del tamaño de la pantalla (sin zoom) ── */
 function wall(){const p=document.querySelector('.immersive .shelf-preview');let w=document.getElementById('shelfWall');
   const bi=p&&p.style.backgroundImage;
@@ -179,12 +174,12 @@ const objMap=new Map(),queue=new Set(),failedAt=new Map();let cdb=null,pumping=0
 const openCDB=()=>new Promise(res=>{try{const r=indexedDB.open('arcane-covers',1);r.onupgradeneeded=()=>r.result.createObjectStore('c');r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}});
 function swapImgs(root){(root||document).querySelectorAll('img').forEach(im=>{const u=im.getAttribute('src')||'';if(!/^https?:/i.test(u))return;const o=objMap.get(u);if(o){im.loading='eager';im.src=o}else enqueue(u)})}
 function enqueue(u){if(!u||!/^https?:/i.test(u)||objMap.has(u)||queue.has(u)||(failedAt.get(u)||0)>Date.now())return;queue.add(u);pump()}
-function pump(){if(running)return;while(queue.size&&pumping<2){const u=queue.values().next().value;queue.delete(u);pumping++;cacheUrl(u).finally(()=>{pumping--;setTimeout(pump,120)})}}
+function pump(){while(queue.size&&pumping<2){const u=queue.values().next().value;queue.delete(u);pumping++;cacheUrl(u).finally(()=>{pumping--;setTimeout(pump,120)})}}
 async function cacheUrl(u){try{const c=new AbortController(),tm=setTimeout(()=>c.abort(),12000);const r=await withTO(fetch(u,{mode:'cors',signal:c.signal}),12000);clearTimeout(tm);if(!r.ok)throw 0;const b=await withTO(r.blob(),12000);if(b.size<800||!/^image\//.test(b.type))throw 0;
   const o=URL.createObjectURL(b);if(!(await imgOk(o))){URL.revokeObjectURL(o);throw 0}
   objMap.set(u,o);if(cdb)try{cdb.transaction('c','readwrite').objectStore('c').put(b,u)}catch(e){}swapImgs(document)}catch(e){failedAt.set(u,Date.now()+6*3600e3)}}
-(async function(){cdb=await openCDB();if(cdb)await new Promise(res=>{try{const rq=cdb.transaction('c','readonly').objectStore('c').openCursor();rq.onsuccess=()=>{const c=rq.result;if(c){objMap.set(c.key,URL.createObjectURL(c.value));c.continue()}else res()};rq.onerror=()=>res()}catch(e){res()}});
-  swapImgs(document);setTimeout(()=>{(data.books||[]).forEach(b=>{enqueue(b.cover);if(b.audio)enqueue(b.audio.cover)})},60000)})();
+(async function(){cdb=await openCDB();if(cdb)await new Promise(res=>{try{const rq=cdb.transaction('c','readonly').objectStore('c').openCursor();rq.onsuccess=()=>{const c=rq.result;if(c){try{if(c.value&&c.value.size>800)objMap.set(c.key,URL.createObjectURL(c.value))}catch(e){}c.continue()}else res()};rq.onerror=()=>res()}catch(e){res()}});
+  swapImgs(document);setTimeout(()=>{(data.books||[]).forEach(b=>{enqueue(b.cover);if(b.audio)enqueue(b.audio.cover)})},8000)})();
 let sw2=0;new MutationObserver(()=>{clearTimeout(sw2);sw2=setTimeout(()=>swapImgs(document),40)}).observe(document.body,{childList:true,subtree:true});
 
 /* ── 10) personajes, lugares y premios desde la ficha de Goodreads ── */
@@ -199,8 +194,6 @@ window.grExtra=async id=>{const b=gb(id);if(!b)return;const url=b.goodreadsUrl||
   if(!h)return toast('Goodreads no respondió. Inténtalo de nuevo en un minuto.');const x=parseGrx(h);
   if(!x.c.length&&!x.p.length&&!x.a.length)return toast('No encontré personajes ni datos extra en esa página.');
   b.grx={c:x.c,p:x.p,a:x.a,t:Date.now()};persist();closeSheet();rerender();setTimeout(()=>bookDetails(id),60)};
-const grBlock=b=>{const g=b.grx,L=(t,a)=>a&&a.length?`<div class="muted small"><b>${t}:</b> ${a.map(esc).join(', ')}</div>`:'';
-  return(g?L('Personajes',g.c)+L('Lugares',g.p)+L('Premios',g.a):'')+`<button class="mini-btn" type="button" onclick="grExtra('${b.id}')">${g?'Actualizar':'Traer'} personajes y datos de Goodreads (respaldo)</button>`};
 
 /* ── 11) Hardcover (clave personal, guardada solo en este teléfono) ── */
 const HC_URL='https://api.hardcover.app/v1/graphql';let hcLast=0;
@@ -234,18 +227,44 @@ async function applyHC(b,d){const i=hcInfo(d),p={},u=hcImg(d);
   if(!b.saga&&i.s){p.saga=i.s;if(!b.sagaN&&+i.n)p.sagaN=+i.n}
   p.hc={...(b.hc||{}),...i,t:Date.now()};Object.assign(b,p);
   try{if(typeof draft!=='undefined'&&draft&&draft.id===b.id)Object.assign(draft,p)}catch(e){}return p}
+/* Extras de Hardcover (se piden junto con los datos y la portada, sin botones): una sola consulta; si falla, por partes */
+const tagList=(t,k)=>{const a=t&&(t[k]||t[k.toLowerCase()]);return Array.isArray(a)?[...new Set(a.map(x=>typeof x==='string'?x:(x&&(x.tag||x.name))||'').filter(Boolean))]:[]};
+const mapEds=l=>(l||[]).map(x=>({f:x.edition_format||'',p:x.pages||0,y:String(x.release_date||'').slice(0,4),i:x.isbn_13||x.isbn_10||'',u:(x.publisher&&x.publisher.name)||'',l:(x.language&&x.language.language)||''})).filter(x=>x.i||x.f||x.u).slice(0,30);
+const mapChars=l=>[...new Set((l||[]).map(x=>x.character&&x.character.name).filter(Boolean))].slice(0,40);
+async function hcExtras(b,d){const bid=String(d&&d.id||(b.hc&&b.hc.id)||'').replace(/\D/g,'');if(!bid)return false;
+  const h={...(b.hc||{})};let got=false;
+  const core='books(where:{id:{_eq:'+bid+'}}){subtitle users_count users_read_count cached_tags default_physical_edition{publisher{name} language{language} release_date pages}}';
+  const chq='book_characters(where:{book_id:{_eq:'+bid+'}},limit:40){character{name}}';
+  const edq='editions(where:{book_id:{_eq:'+bid+'}},limit:30){edition_format pages release_date isbn_10 isbn_13 publisher{name} language{language}}';
+  const apply=(r)=>{const bk=r.books&&r.books[0];
+    if(bk){const t=bk.cached_tags||{};h.sub=bk.subtitle||h.sub||'';h.u=+bk.users_count||h.u||0;h.ur=+bk.users_read_count||h.ur||0;
+      const g=tagList(t,'Genre'),m=tagList(t,'Mood'),w=tagList(t,'Content Warning'),x=tagList(t,'Tag');
+      if(g.length)h.g=g.slice(0,10);if(m.length)h.m=m.slice(0,10);if(w.length)h.w=w.slice(0,12);if(x.length)h.tg=x.slice(0,14);
+      const pe=bk.default_physical_edition;if(pe){h.pub=(pe.publisher&&pe.publisher.name)||h.pub||'';h.lang=(pe.language&&pe.language.language)||h.lang||''}got=true}
+    if(r.book_characters){h.c=mapChars(r.book_characters);got=true}
+    if(r.editions){h.e=mapEds(r.editions);got=true}};
+  try{apply(await hcQ('query{'+core+' '+chq+' '+edq+'}'))}catch(e){if(/clave|sin/.test(e.message))throw e;
+    for(const q of[core,chq,edq,'books(where:{id:{_eq:'+bid+'}}){subtitle users_count users_read_count cached_tags}',
+      'editions(where:{book_id:{_eq:'+bid+'}},limit:30){edition_format pages release_date isbn_10 isbn_13 publisher{name}}']){
+      try{apply(await hcQ('query{'+q+'}'))}catch(e2){if(/clave|sin/.test(e2.message))throw e2}}}
+  if(got){h.x=Date.now();b.hc=h;if(!b.publisher&&h.pub)b.publisher=h.pub;if(!b.language&&h.lang)b.language=h.lang;
+    try{if(typeof draft!=='undefined'&&draft&&draft.id===b.id){draft.hc=h;if(!draft.publisher&&h.pub)draft.publisher=h.pub;if(!draft.language&&h.lang)draft.language=h.lang}}catch(e){}}
+  return got}
 async function hcEnrichBook(b){if(!hcTok())return false;let d;try{d=await hcFind(b)}catch(e){if(/clave|sin/.test(e.message))throw e;return false}
-  if(!d){b.hcMiss=Date.now();return false}await applyHC(b,d);persistSoon();return true}
-window.hcEnrichBook=hcEnrichBook;window.hcOn=()=>!!hcTok();
+  if(!d){b.hcMiss=Date.now();return false}await applyHC(b,d);try{await hcExtras(b,d)}catch(e){if(/clave|sin/.test(e.message))throw e}persistSoon();return true}
+/* libros que ya tenían datos básicos pero aún no los extras (personajes, ediciones…) */
+async function hcTopUp(b){if(!hcTok()||!b||!b.hc||b.hc.x)return false;try{const got=await hcExtras(b,{id:b.hc.id});if(got)persistSoon();return got}catch(e){return false}}
+window.hcTopUp=hcTopUp;
+window.hcEnrichBook=hcEnrichBook;window.__hcCover=hcCover;window.__coverFor=coverFor;window.hcOn=()=>!!hcTok();
 let hcRun=false,hcStart=0;
 window.hcEnrichAll=async force=>{if(!hcTok()){if(force)toast('Primero pega tu clave en Perfil → Hardcover.');return}
   if(hcRun&&Date.now()-hcStart<20*60e3){if(force)toast('Ya estoy completando con Hardcover…');return}
   if(!navigator.onLine){if(force)toast('Sin conexión a internet');return}
-  const list=(data.books||[]).filter(b=>b.format!=='Audiolibro'&&!b.hc&&(force||!b.hcMiss||Date.now()-b.hcMiss>3*864e5));
+  const list=(data.books||[]).filter(b=>b.format!=='Audiolibro'&&(!b.hc||(!b.hc.x&&b.hc.id&&(force||!b.hcXTry||Date.now()-b.hcXTry>864e5)))&&(b.hc||force||!b.hcMiss||Date.now()-b.hcMiss>3*864e5));
   if(!list.length){if(force)toast('Todos tus libros ya tienen datos de Hardcover ✦');setTimeout(()=>findMissingCovers(false),1500);return}
   hcRun=true;hcStart=Date.now();ERR=0;let done=0,ok=0,bad='';
   for(const b of list){stat(`Completando con Hardcover… ${done}/${list.length}`);
-    try{if(await withTO(hcEnrichBook(b),30000))ok++}catch(e){if(/clave|sin/.test(e.message)){bad='Tu clave de Hardcover no es válida o venció.';break}}
+    try{if(await withTO(b.hc?(b.hcXTry=Date.now(),hcTopUp(b)):hcEnrichBook(b),30000))ok++}catch(e){if(/clave|sin/.test(e.message)){bad='Tu clave de Hardcover no es válida o venció.';break}}
     done++;if(done%25===0)try{render()}catch(e){}}
   hcRun=false;persist();try{rerender()}catch(e){}
   stat(bad||`Hardcover: ${ok} de ${list.length} libros completados`+(ERR?` · ${ERR} consultas fallaron`:''),true);
@@ -254,21 +273,13 @@ window.searchHardcover=async q=>{q=String(q||'').replace(/^isbn:/i,'').trim();if
   return(await hcSearch(q,12)).map(d=>({source:'hardcover',extId:String(d.id||''),title:d.title||'',author:arr(d.author_names).join(', '),description:strip(d.description),pages:+d.pages||0,isbn:isbn13(d.isbns),cover:hcImg(d),published:String(d.release_year||String(d.release_date||'').slice(0,4)||''),publisher:'',categories:arr(d.genres).slice(0,6).join(', '),hc:hcInfo(d)}))};
 const _isr3=importSearchResult;importSearchResult=function(r,i){const n=data.books.length;_isr3(r,i);const b=data.books[data.books.length-1];
   if(data.books.length>n&&b&&hcTok()){const x=r&&r[i]?r[i]:null;
-    if(x&&x.source==='hardcover'&&x.hc){b.hc={...x.hc,t:Date.now()};if(typeof draft!=='undefined'&&draft&&draft.id===b.id)draft.hc=b.hc;persistSoon()}
+    if(x&&x.source==='hardcover'&&x.hc){b.hc={...x.hc,t:Date.now()};if(typeof draft!=='undefined'&&draft&&draft.id===b.id)draft.hc=b.hc;persistSoon();hcTopUp(b).then(()=>{try{if(document.querySelector('.dt-body'))window.__dtRefresh&&window.__dtRefresh(b.id)}catch(e){}})}
     else hcEnrichBook(b).then(ok=>{if(!ok&&window.__grSync&&(b.goodreadsUrl||b.isbn))window.__grSync(b)}).catch(()=>{})}};
 window.hcData=async id=>{const b=gb(id);if(!b)return;if(!hcTok())return toast('Primero pega tu clave de Hardcover en Perfil → Hardcover.');toast('Buscando en Hardcover…');
   let d;try{d=await hcFind(b)}catch(e){return toast('Hardcover: '+e.message)}
-  if(!d)return toast('No encontré este libro en Hardcover.');
-  await applyHC(b,d);const bid=String(d.id||'').replace(/\D/g,'');
-  if(bid){try{const c=await hcQ(`query{book_characters(where:{book_id:{_eq:${bid}}},limit:40){character{name}}}`);b.hc.c=[...new Set((c.book_characters||[]).map(x=>x.character&&x.character.name).filter(Boolean))].slice(0,40)}catch(e){}
-    try{const e2=await hcQ(`query{editions(where:{book_id:{_eq:${bid}}},limit:30){edition_format pages release_date isbn_10 isbn_13 publisher{name}}}`);b.hc.e=(e2.editions||[]).map(x=>({f:x.edition_format||'',p:x.pages||0,y:String(x.release_date||'').slice(0,4),i:x.isbn_13||x.isbn_10||'',u:(x.publisher&&x.publisher.name)||''})).filter(x=>x.i||x.f).slice(0,30)}catch(e){}}
-  persist();closeSheet();rerender();setTimeout(()=>bookDetails(id),60)};
-const hcBlock=b=>{const h=b.hc,L=(t,a)=>a&&a.length?`<div class="muted small"><b>${t}:</b> ${a.map(esc).join(', ')}</div>`:'';let x='';
-  if(h){if(h.r)x+=`<div class="muted small"><b>Valoración en Hardcover:</b> ★ ${h.r.toFixed(1)}${h.rc?' ('+h.rc.toLocaleString('es')+' valoraciones)':''}</div>`;
-    x+=L('Géneros',h.g)+L('Estados de ánimo',h.m)+L('Advertencias de contenido',h.w)+L('Personajes',h.c)
-     +(h.e&&h.e.length?`<details class="muted small"><summary><b>Ediciones (${h.e.length})</b></summary>${h.e.map(e=>`<div>${esc([e.f,e.u,e.y,e.p?e.p+' pág.':'',e.i].filter(Boolean).join(' · '))}</div>`).join('')}</details>`:'')
-     +(h.slug?`<a class="muted small" href="https://hardcover.app/books/${esc(h.slug)}" target="_blank" rel="noopener">Ver en Hardcover ↗</a>`:'')}
-  return x+`<button class="mini-btn" type="button" onclick="hcData('${b.id}')">${h&&h.c?'Actualizar':'Traer'} personajes, ediciones y datos de Hardcover</button>`};
+  if(!d){b.hcMiss=Date.now();return toast('No encontré este libro en Hardcover.')}
+  try{await applyHC(b,d);await hcExtras(b,d)}catch(e){return toast('Hardcover: '+e.message)}
+  persist();toast('Datos de Hardcover actualizados ✦');try{rerender()}catch(e){}if(window.__dtRefresh)window.__dtRefresh(id)};
 window.hcConfig=()=>{showSheet(`<div class="sheet-header"><div><h2>Hardcover</h2><div class="muted small">Tu clave se guarda solo en este teléfono</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
   <div class="ss-form" style="display:grid;gap:10px"><div id="hcMsg" class="muted small" style="min-height:20px">${hcTok()?'Ya hay una clave guardada.':'Pega aquí la clave que creaste en hardcover.app/account/api'}</div>
   <label>Clave de la API</label><input id="hcTok" type="password" autocomplete="off" placeholder="Pega tu clave" value="">
