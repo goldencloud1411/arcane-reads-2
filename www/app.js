@@ -179,10 +179,9 @@ function renderProfile(){
     <section class="card" id="installCard" hidden><h3>Instalar app</h3><div class="muted small" style="margin-bottom:10px">Ábrela desde tu pantalla de inicio, sin barra del navegador.</div><button class="btn-soft" onclick="installApp()">Instalar Arcane Reads</button></section>
     <section class="card"><h3>App</h3>
       <div class="switch-row"><div><strong>Tema</strong><div class="muted small">Estilo global de la app</div></div><select style="width:auto" onchange="data.theme=this.value;rerender()"><option value="classic" ${data.theme==='classic'?'selected':''}>Clásico</option><option value="dark" ${data.theme==='dark'?'selected':''}>Dark</option><option value="cozy" ${data.theme==='cozy'?'selected':''}>Cozy</option><option value="celestial" ${data.theme==='celestial'?'selected':''}>Celestial</option></select></div>
-      <div class="switch-row"><div><strong>Recordatorio de lectura</strong><div class="muted small">Solo referencia visual por ahora</div></div><input style="width:110px" value="${esc(data.settings.readingReminder||'19:30')}" onchange="data.settings.readingReminder=this.value;save()"></div>
       <div class="switch-row"><div><strong>Datos de la biblioteca</strong><div class="muted small">Importar o exportar</div></div><div style="display:flex;gap:8px"><button class="mini-btn" onclick="$('importer').click()">Importar</button><button class="mini-btn" onclick="backup()">Exportar</button></div></div>
     </section>
-    <section class="card"><h3>Cómo agregar libros fácil</h3><div class="notice success">Te recomiendo usar <strong>Buscar en línea</strong> para traer título, autor, portada, descripción y páginas desde Google Books u Open Library. Para Goodreads, la vía fiable es <strong>importar tu CSV</strong>.</div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn-soft" onclick="openAddBookFlow('search')">Buscar en línea</button><button class="mini-btn" onclick="$('importer').click()">Importar Goodreads</button><button class="mini-btn" onclick="editBook()">Añadir manual</button></div></section>
+    <section class="card"><h3>Cómo agregar libros fácil</h3><div class="notice success">Te recomiendo usar <strong>Buscar en línea</strong> para traer título, autor, portada, descripción y páginas desde Hardcover (con tu clave), Open Library, Google Books y, como último recurso, Goodreads. Para traer tu biblioteca de Goodreads, <strong>importa tu CSV</strong>.</div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn-soft" onclick="openAddBookFlow('search')">Buscar en línea</button><button class="mini-btn" onclick="$('importer').click()">Importar Goodreads</button><button class="mini-btn" onclick="editBook()">Añadir manual</button></div></section>
   `;
   applyTheme();
   return wrap;
@@ -234,25 +233,25 @@ function openAddBookFlow(mode='menu'){
     <div class="sheet-header"><div><h2>Añadir libro</h2><div class="muted small">Encuentra tu edición favorita</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
     <div class="list">
       <button class="card" onclick="openSearchSheet()" style="text-align:left"><strong>✦ Buscar en Goodreads</strong><div class="muted small">Encuentra el libro y sus ediciones en el catálogo de Goodreads.</div></button>
-      <button class="card" onclick="openSearchSheet('google')" style="text-align:left"><strong>Buscar por título o ISBN</strong><div class="muted small">Trae portada, autor, páginas y descripción desde Google Books u Open Library.</div></button>
+      <button class="card" onclick="openSearchSheet('hardcover')" style="text-align:left"><strong>Buscar por título o ISBN</strong><div class="muted small">Trae portada, autor, páginas, descripción y géneros desde Hardcover, Open Library o Google Books.</div></button>
       <button class="card" onclick="closeSheet();$('importer').click()" style="text-align:left"><strong>Importar mi biblioteca de Goodreads</strong><div class="muted small">Importación de un CSV exportado de tu cuenta.</div></button>
       <button class="card" onclick="editBook()" style="text-align:left"><strong>Añadir manualmente</strong><div class="muted small">Personaliza cada cara y las medidas de tu ejemplar.</div></button>
     </div>
   `);
 }
 let searchResultsCache=[];
-function openSearchSheet(source='goodreads'){
+function openSearchSheet(source='hardcover'){
   showSheet(`
     <div class="sheet-header"><div><h2>Encuentra tu libro</h2><div class="muted small">Busca una obra o una edición concreta</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
     <div class="field"><label for="bookSearchInput">Título, autor o ISBN</label><div style="display:flex;gap:8px;align-items:center"><input id="bookSearchInput" placeholder="Alas de sangre, Rebecca Yarros…" onkeydown="if(event.key==='Enter'){event.preventDefault();runBookSearch()}"><button class="btn-soft" onclick="runBookSearch()">Buscar</button></div></div>
-    <div class="segmented" style="margin-top:14px"><button id="segGR">Goodreads</button><button id="segGoogle">Google Books</button><button id="segOL">Open Library</button></div>
+    <div class="segmented" style="margin-top:14px"><button id="segHC">Hardcover</button><button id="segOL">Open Library</button><button id="segGoogle">Google Books</button><button id="segGR">Goodreads</button></div>
     <div id="searchStatus" class="muted small" style="margin-top:12px"></div>
     <div id="grHelp" style="margin-top:14px;display:none"><div class="notice"><strong>Encuentra la edición exacta.</strong> Busca en Goodreads, abre la ficha de tu edición y copia su ISBN. Regresa aquí y pega el ISBN para buscar sus datos en los catálogos disponibles. Goodreads se abre en otra pestaña; no existe acceso oficial público al catálogo para copiar sus fichas directamente.</div><div class="field" style="margin-top:14px"><label for="grIsbn">ISBN de la edición (10 o 13 caracteres)</label><input id="grIsbn" placeholder="978…" inputmode="text"><label for="grUrl">Enlace de Goodreads (opcional)</label><input id="grUrl" type="url" placeholder="https://www.goodreads.com/book/show/…"><button class="btn-soft" onclick="lookupGoodreadsEdition()">Traer ficha por ISBN</button><button class="mini-btn" onclick="manualGoodreadsEdition()">Crear ficha manual con enlace</button></div></div>
     <div id="searchResults" class="search-results"></div>
   `);
   window.searchSource=source;window.pendingGoodreadsUrl='';
-  const select=(src)=>{window.searchSource=src; for(const [id,key] of [['segGR','goodreads'],['segGoogle','google'],['segOL','openlibrary']]) $(id).classList.toggle('active',src===key); $('grHelp').style.display=src==='goodreads'?'block':'none'; $('searchStatus').textContent=src==='goodreads'?'Goodreads · búsqueda en su sitio oficial':'Los resultados muestran fichas de la fuente seleccionada.'; $('searchResults').innerHTML='';};
-  $('segGR').onclick=()=>select('goodreads'); $('segGoogle').onclick=()=>select('google'); $('segOL').onclick=()=>select('openlibrary');select(source);
+  const select=(src)=>{window.searchSource=src; for(const [id,key] of [['segHC','hardcover'],['segGR','goodreads'],['segGoogle','google'],['segOL','openlibrary']]) $(id).classList.toggle('active',src===key); $('grHelp').style.display=src==='goodreads'?'block':'none'; $('searchStatus').textContent=src==='hardcover'?(window.hcOn&&window.hcOn()?'Hardcover · portada, géneros y ánimos':'Para usar Hardcover pega tu clave en Perfil → Hardcover; mientras tanto uso Open Library.'):src==='goodreads'?'Goodreads · búsqueda en su sitio oficial':'Los resultados muestran fichas de la fuente seleccionada.'; $('searchResults').innerHTML='';};
+  $('segHC').onclick=()=>select('hardcover'); $('segGR').onclick=()=>select('goodreads'); $('segGoogle').onclick=()=>select('google'); $('segOL').onclick=()=>select('openlibrary');select(source);
 }
 function validGoodreadsUrl(raw){try{const u=new URL(raw);return u.protocol==='https:'&&['goodreads.com','www.goodreads.com'].includes(u.hostname)&&u.pathname.startsWith('/book/show/')?u.href:'';}catch{return '';}}
 function lookupGoodreadsEdition(){const isbn=$('grIsbn').value.replace(/[^0-9X]/gi,''); if(!/^(?:\d{13}|\d{9}[0-9X])$/i.test(isbn)){ $('searchStatus').textContent='Escribe un ISBN válido de 10 o 13 caracteres.';return;} const raw=$('grUrl').value.trim();window.pendingGoodreadsUrl=validGoodreadsUrl(raw);if(raw&&!window.pendingGoodreadsUrl){$('searchStatus').textContent='El enlace debe ser una ficha de libro de Goodreads.';return;} $('bookSearchInput').value=isbn;runBookSearch(true);}
@@ -263,14 +262,15 @@ async function runBookSearch(forceIsbn=false){
   const status=$('searchStatus'), resultsEl=$('searchResults');status.textContent='Buscando…';resultsEl.innerHTML='';
   try{
     let results=[];
-    if(forceIsbn){let errs=0;try{results=await searchGoogleBooks('isbn:'+q)}catch{errs++}if(!results.length){try{results=await searchOpenLibrary('isbn:'+q)}catch{errs++}}if(!results.length&&errs===2)throw new Error('No se pudo consultar los catálogos. Intenta nuevamente.');}
-    else if(window.searchSource==='goodreads'){try{results=await searchGoodreads(q)}catch{results=[]}if(!results.length){status.textContent='Goodreads no respondió; uso Google Books…';try{results=await searchGoogleBooks(q)}catch{results=await searchOpenLibrary(q)}}}
-    else if(window.searchSource==='openlibrary') results=await searchOpenLibrary(q);
-    else {try{results=await searchGoogleBooks(q);}catch{results=await searchOpenLibrary(q);}if(!results.length)results=await searchOpenLibrary(q);}
+    const Q=forceIsbn?'isbn:'+q:q,S={hardcover:()=>window.searchHardcover?window.searchHardcover(Q):[],openlibrary:()=>searchOpenLibrary(Q),google:()=>searchGoogleBooks(Q),goodreads:()=>searchGoodreads(q)};
+    const order=['hardcover','openlibrary','google','goodreads'],first=forceIsbn?'hardcover':(window.searchSource||'hardcover'),LB={hardcover:'Hardcover',openlibrary:'Open Library',google:'Google Books',goodreads:'Goodreads'};
+    const chain=[first,...order.filter(x=>x!==first)].filter(x=>!(forceIsbn&&x==='goodreads'));let errs=0;
+    for(let k=0;k<chain.length&&!results.length;k++){if(k>0&&status.isConnected)status.textContent=`${LB[chain[k-1]]} no respondió o no encontró nada; pruebo con ${LB[chain[k]]}…`;try{results=(await S[chain[k]]())||[]}catch{errs++;results=[]}}
+    if(!results.length&&errs===chain.length)throw new Error('No se pudo consultar los catálogos. Intenta nuevamente.');
     if(!status.isConnected)return;
     searchResultsCache=results;
     status.textContent=results.length?`${results.length} resultado(s) · elige tu edición`:'No encontré resultados. Puedes añadir el libro manualmente.';
-    resultsEl.innerHTML=results.map((r,i)=>`<div class="search-card"><div class="thumb">${r.cover?`<img src="${esc(r.cover)}" alt="">`:'📖'}</div><div style="flex:1;min-width:0"><strong>${esc(r.title)}</strong><div class="muted small">${esc(r.author||'Sin autor')} ${r.pages?'· '+r.pages+' páginas':''}</div><div class="small muted">${esc(r.publisher||'')} ${esc(String(r.published||''))} ${r.isbn?'· ISBN '+esc(r.isbn):''}</div><div class="small" style="margin-top:6px">${esc(String(r.description||'').slice(0,180))}${String(r.description||'').length>180?'…':''}</div><div class="tiny muted" style="margin-top:6px">Fuente: ${({google:'Google Books',goodreads:'Goodreads'})[r.source]||'Open Library'}</div><button class="btn-soft" onclick="importSearchResult(searchResultsCache,${i})">Agregar a mi biblioteca</button></div></div>`).join('');
+    resultsEl.innerHTML=results.map((r,i)=>`<div class="search-card"><div class="thumb">${r.cover?`<img src="${esc(r.cover)}" alt="">`:'📖'}</div><div style="flex:1;min-width:0"><strong>${esc(r.title)}</strong><div class="muted small">${esc(r.author||'Sin autor')} ${r.pages?'· '+r.pages+' páginas':''}</div><div class="small muted">${esc(r.publisher||'')} ${esc(String(r.published||''))} ${r.isbn?'· ISBN '+esc(r.isbn):''}</div><div class="small" style="margin-top:6px">${esc(String(r.description||'').slice(0,180))}${String(r.description||'').length>180?'…':''}</div><div class="tiny muted" style="margin-top:6px">Fuente: ${({hardcover:'Hardcover',google:'Google Books',goodreads:'Goodreads'})[r.source]||'Open Library'}</div><button class="btn-soft" onclick="importSearchResult(searchResultsCache,${i})">Agregar a mi biblioteca</button></div></div>`).join('');
   }catch(err){if(status.isConnected)status.textContent='No se pudo buscar: '+err.message;}
 }
 

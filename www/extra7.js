@@ -161,13 +161,13 @@ window.syncAllBooks=async function(){
 };
 /* se ejecuta solo: libros nuevos y, en segundo plano, los que aún no tienen la ficha completa */
 const _en=enrich;enrich=async function(b){if(b&&needsSync(b)&&(b.goodreadsUrl||b.isbn))await syncGoodreads(b);return _en(b)};
-const _is=importSearchResult;importSearchResult=function(r,i){const n=data.books.length;_is(r,i);const b=data.books[data.books.length-1];
-  if(data.books.length>n&&b&&(b.goodreadsUrl||b.isbn)){toast('Trayendo datos de Goodreads…');syncGoodreads(b).then(g=>{if(!g)return toast('No pude leer Goodreads; usé los datos básicos');toast('Datos de Goodreads listos ✦');
+window.__grSync=syncGoodreads;const _is=importSearchResult;importSearchResult=function(r,i){const n=data.books.length;_is(r,i);const b=data.books[data.books.length-1];
+  if(data.books.length>n&&b&&(b.goodreadsUrl||b.isbn)&&!(window.hcOn&&window.hcOn())){toast('Trayendo datos de Goodreads…');syncGoodreads(b).then(g=>{if(!g)return toast('No pude leer Goodreads; usé los datos básicos');toast('Datos de Goodreads listos ✦');
     if(editorOpen(b.id))reopenEditor();else if(!$('dlg').open)rerender()})}};
 let busy=false;async function grAll(){if(busy||!navigator.onLine)return;busy=true;let n=0;
   for(const b of data.books){if(!needsSync(b)||(!b.goodreadsUrl&&!b.isbn)||(b.grTried&&Date.now()-b.grTried<216e5))continue;if(++n>12)break;await syncGoodreads(b);await new Promise(r=>setTimeout(r,1500))}
   busy=false;if(n)rerender()}
-setTimeout(grAll,60000);addEventListener('online',()=>setTimeout(grAll,2000));
+/* grAll automático desactivado: Hardcover es la fuente principal; Goodreads solo como último recurso */
 
 /* búsqueda en "Libros" también por género, etiqueta, ISBN */
 filteredBooks=function(){const q=filters.query.toLowerCase();return sortBooks(data.books.filter(b=>(filters.status==='Todos'||b.status===filters.status)&&[b.title,b.author,b.saga,b.collection,b.categories,(b.tags||[]).join(' '),b.isbn].join(' ').toLowerCase().includes(q)))};

@@ -65,14 +65,12 @@ async function grCover(b,t,a,isbn){if(typeof searchGoodreads!=='function')return
     if(pick&&await imgOk(pick.cover))return pick.cover}
   return''}
 const firstOf=fs=>new Promise(res=>{let n=fs.length;if(!n)return res('');fs.forEach(f=>{Promise.resolve().then(f).then(u=>{if(u)res(u);else if(--n===0)res('')},()=>{if(--n===0)res('')})})});
-async function coverFor(b){
-  const t=cleanT(b.title),a=firstAu(b.author),isbn=String(b.isbn||'').replace(/[^0-9X]/gi,'');
-  /* A: ficha de Goodreads por su número + imágenes por ISBN, a la vez */
-  let u=await firstOf([()=>grPage(b),()=>isbn?olIsbn(isbn):'',()=>isbn?amazon(isbn):'']);if(u)return u;
-  /* B: búsqueda interna de Goodreads (la misma que al agregar un libro) */
-  try{u=await grCover(b,t,a,isbn)}catch(e){}if(u)return u;
-  /* C: Google Books y Open Library, a la vez */
-  return await firstOf([()=>hcCover(b),()=>isbn?gbCover('isbn:'+isbn,''):'',()=>gbCover(`intitle:"${t}"${a?' inauthor:"'+a+'"':''}`,t),()=>olSearch(t,a),()=>gbCover((t+' '+a).trim(),t)])}
+async function coverFor(b){const t=cleanT(b.title),a=firstAu(b.author),isbn=String(b.isbn||'').replace(/[^0-9X]/gi,'');let u='';
+  /* 1) Hardcover  2) Open Library  3) Google Books (y Amazon por ISBN)  4) Goodreads, solo como último recurso */
+  if(hcTok()&&!b.hc){try{u=await hcCover(b)}catch(e){}if(u)return u}
+  u=await firstOf([()=>isbn?olIsbn(isbn):'',()=>olSearch(t,a)]);if(u)return u;
+  u=await firstOf([()=>isbn?gbCover('isbn:'+isbn,''):'',()=>gbCover(`intitle:"${t}"${a?' inauthor:"'+a+'"':''}`,t),()=>isbn?amazon(isbn):'']);if(u)return u;
+  u=await firstOf([()=>grPage(b),()=>grCover(b,t,a,isbn)]);return u||''}
 function stat(msg,end){let e=document.getElementById('covStat');if(!e){e=document.createElement('div');e.id='covStat';document.body.appendChild(e)}e.textContent=msg;e.classList.add('on');if(end)setTimeout(()=>e.classList.remove('on'),3800)}
 let running=false,runStart=0;
 window.findMissingCovers=async function(force,pass){pass=pass||1;
@@ -89,7 +87,7 @@ window.findMissingCovers=async function(force,pass){pass=pass||1;
   if(found>0&&left>0&&pass<6){stat(`Encontré ${found} · reintentando los ${left} que faltan…`);setTimeout(()=>findMissingCovers(true,pass+1),4000);return}stat((found?`Listo: ${found} portada${found===1?'':'s'} nueva${found===1?'':'s'} ✦`:'No encontré portadas nuevas')+(left?` · faltan ${left}`:'')+(errN?` · ${errN} consultas fallaron`:''),true)};
 
 /* ── 3) después de importar de Goodreads: normalizar y buscar portadas ── */
-const imp=$('importer');if(imp&&imp.onchange){const old=imp.onchange;imp.onchange=async function(e){await old.call(this,e);if(normAll())rerender();setTimeout(()=>findMissingCovers(false),600)}}
+const imp=$('importer');if(imp&&imp.onchange){const old=imp.onchange;imp.onchange=async function(e){await old.call(this,e);if(normAll())rerender();setTimeout(()=>hcTok()?hcEnrichAll(false):findMissingCovers(false),600)}}
 
 /* ── 4) render: normalizar, botón en Perfil, espacio de la estantería ── */
 function fit2(){const app=$('app'),h=document.querySelector('.immersive .section-gap>section:first-child'),p=document.querySelector('.immersive .shelf-preview');if(!app||!h||!p)return;
@@ -102,12 +100,14 @@ const _r=render;render=function(){normAll();_r();
   const s=[...document.querySelectorAll('.switch-row strong')].find(x=>/Datos de la biblioteca/.test(x.textContent));
   if(s){const row=s.closest('.switch-row');if(row&&!row.nextElementSibling?.classList.contains('cov-row'))row.insertAdjacentHTML('afterend','<div class="switch-row cov-row"><div><strong>Portadas</strong><div class="muted small">Buscar las que falten</div></div><div style="display:flex;gap:8px"><button class="mini-btn" onclick="findMissingCovers(true)">Buscar</button><button class="mini-btn" onclick="showMissingCovers()">Ver faltantes</button></div></div>')}
   wall();swapImgs(document);setTimeout(fit2,450);setTimeout(fit2,1500)};
-function hcRow(){const c=document.querySelector('.cov-row');if(c&&!(c.nextElementSibling&&c.nextElementSibling.classList.contains('hc-row')))c.insertAdjacentHTML('afterend','<div class="switch-row hc-row"><div><strong>Hardcover</strong><div class="muted small">Clave para portadas y datos extra</div></div><button class="mini-btn" onclick="hcConfig()">Configurar</button></div>')}
+function gsyncCard(){const c=document.querySelector('.gsync');if(!c||c.dataset.hc)return;c.dataset.hc='1';const on=hcTok(),n=(data.books||[]).filter(b=>b.format!=='Audiolibro'&&!b.hc&&!b.hcMiss).length;
+  c.innerHTML=`<div><strong>Datos de los libros</strong><div class="muted small">${on?(n?n+' libro'+(n===1?'':'s')+' por completar (portada, sinopsis, géneros…)':'Todos completos ✦'):'Pega tu clave de Hardcover para completar tus libros'}</div></div><button class="mini-btn" onclick="${on?'hcEnrichAll(true)':'hcConfig()'}">✦ ${on?'Completar':'Configurar'}</button>`}
+function hcRow(){gsyncCard();const c=document.querySelector('.cov-row');if(c&&!(c.nextElementSibling&&c.nextElementSibling.classList.contains('hc-row')))c.insertAdjacentHTML('afterend','<div class="switch-row hc-row"><div><strong>Hardcover</strong><div class="muted small">Clave para portadas y datos extra</div></div><button class="mini-btn" onclick="hcConfig()">Configurar</button></div>')}
 function perfilBtn(){const s=[...document.querySelectorAll('.switch-row strong')].find(x=>/Datos de la biblioteca/.test(x.textContent));if(!s)return;const row=s.closest('.switch-row');
   if(row&&!(row.nextElementSibling&&row.nextElementSibling.classList.contains('cov-row')))row.insertAdjacentHTML('afterend','<div class="switch-row cov-row"><div><strong>Portadas</strong><div class="muted small">Buscar las que falten</div></div><div style="display:flex;gap:8px"><button class="mini-btn" onclick="findMissingCovers(true)">Buscar</button><button class="mini-btn" onclick="showMissingCovers()">Ver faltantes</button></div></div>')}
 let pt=0;new MutationObserver(()=>{clearTimeout(pt);pt=setTimeout(()=>{perfilBtn();hcRow()},150)}).observe(document.body,{childList:true,subtree:true});
 addEventListener('resize',fitSoon);
-setTimeout(()=>findMissingCovers(false),25000);addEventListener('online',()=>setTimeout(()=>findMissingCovers(false),8000));
+const autoRun=()=>hcTok()?hcEnrichAll(false):findMissingCovers(false);setTimeout(autoRun,25000);addEventListener('online',()=>setTimeout(autoRun,8000));
 
 /* ── 5) botón/gesto "atrás": cierra hojas y sub-vistas en vez de cerrar la app ── */
 /* Qué hace el gesto "atrás": cierra hoja/visor, sale de una sub-vista o vuelve a Inicio.
@@ -163,7 +163,7 @@ window.coverByUrl=async id=>{const u=(document.getElementById('cvUrl').value||''
   await imgOk(u)?applyCover(id,u):prevMsg('Esa imagen no se pudo cargar.')};
 new MutationObserver(()=>{const db=document.querySelector('.dt-body');if(!db||db.querySelector('.cov-sec'))return;
   const btn=document.querySelector('.dt-bar [onclick*="startSession("]'),m=btn&&(btn.getAttribute('onclick')||'').match(/'([^']+)'/);if(!m)return;
-  const html=`<section class="cov-sec" style="display:grid;gap:8px;margin:6px 0"><button class="mini-btn" type="button" onclick="coverTools('${m[1]}',true)">Cambiar o buscar portada (ISBN)</button>${gb(m[1])?grBlock(gb(m[1]))+hcBlock(gb(m[1])):''}</section>`;
+  const html=`<section class="cov-sec" style="display:grid;gap:8px;margin:6px 0"><button class="mini-btn" type="button" onclick="coverTools('${m[1]}',true)">Cambiar o buscar portada (ISBN)</button>${gb(m[1])?hcBlock(gb(m[1]))+grBlock(gb(m[1])):''}</section>`;
   const a=db.querySelector('.ss-sec');a?a.insertAdjacentHTML('beforebegin',html):db.insertAdjacentHTML('beforeend',html)}).observe($('dlg'),{childList:true,subtree:true});
 
 /* ── 8) foto de fondo de la estantería: una capa fija del tamaño de la pantalla (sin zoom) ── */
@@ -200,7 +200,7 @@ window.grExtra=async id=>{const b=gb(id);if(!b)return;const url=b.goodreadsUrl||
   if(!x.c.length&&!x.p.length&&!x.a.length)return toast('No encontré personajes ni datos extra en esa página.');
   b.grx={c:x.c,p:x.p,a:x.a,t:Date.now()};persist();closeSheet();rerender();setTimeout(()=>bookDetails(id),60)};
 const grBlock=b=>{const g=b.grx,L=(t,a)=>a&&a.length?`<div class="muted small"><b>${t}:</b> ${a.map(esc).join(', ')}</div>`:'';
-  return(g?L('Personajes',g.c)+L('Lugares',g.p)+L('Premios',g.a):'')+`<button class="mini-btn" type="button" onclick="grExtra('${b.id}')">${g?'Actualizar':'Traer'} personajes y datos de Goodreads</button>`};
+  return(g?L('Personajes',g.c)+L('Lugares',g.p)+L('Premios',g.a):'')+`<button class="mini-btn" type="button" onclick="grExtra('${b.id}')">${g?'Actualizar':'Traer'} personajes y datos de Goodreads (respaldo)</button>`};
 
 /* ── 11) Hardcover (clave personal, guardada solo en este teléfono) ── */
 const HC_URL='https://api.hardcover.app/v1/graphql';let hcLast=0;
@@ -210,7 +210,7 @@ async function hcQ(query,variables){const tk=hcTok();if(!tk)throw new Error('sin
   const r=await withTO(fetch(HC_URL,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tk},body:JSON.stringify({query,variables})}),12000);
   if(r.status===401||r.status===403)throw new Error('clave no válida');if(r.status===429){ERR++;throw new Error('límite')}
   const j=await withTO(r.json(),8000);if(j.errors&&!j.data){ERR++;throw new Error('error')}return j.data||{}}
-async function hcSearch(q){const d=await hcQ('query($q:String!){search(query:$q,query_type:"Book",per_page:6,page:1){results}}',{q});
+async function hcSearch(q,n){const d=await hcQ('query($q:String!){search(query:$q,query_type:"Book",per_page:'+(n||6)+',page:1){results}}',{q});
   let r=d.search&&d.search.results;if(typeof r==='string'){try{r=JSON.parse(r)}catch(e){r=null}}
   return((r&&r.hits)||[]).map(h=>h.document||h).filter(Boolean)}
 async function hcFind(b){const t=cleanT(b.title),a=firstAu(b.author),isbn=String(b.isbn||'').replace(/[^0-9X]/gi,'');
@@ -221,17 +221,54 @@ async function hcFind(b){const t=cleanT(b.title),a=firstAu(b.author),isbn=String
 const hcImg=d=>{const i=d&&d.image;return typeof i==='string'?i:(i&&i.url)||''};
 async function hcCover(b){if(!hcTok())return'';const d=await hcFind(b),u=hcImg(d);return u&&await imgOk(u)?u:''}
 const arr=v=>Array.isArray(v)?v.map(x=>typeof x==='string'?x:(x&&x.name)||'').filter(Boolean):[];
+const isbn13=l=>{const x=(l||[]).map(v=>String(v).replace(/[^0-9X]/gi,''));return x.find(v=>v.length===13)||x[0]||''};
+const strip=t=>String(t||'').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim();
+const hcInfo=d=>({g:arr(d.genres).slice(0,8),m:arr(d.moods).slice(0,8),w:arr(d.content_warnings).slice(0,8),s:arr(d.series_names)[0]||'',n:d.featured_series_position||'',slug:d.slug||'',id:String(d.id||''),r:+d.rating||0,rc:+d.ratings_count||0});
+async function applyHC(b,d){const i=hcInfo(d),p={},u=hcImg(d);
+  if(!b.cover&&u&&await imgOk(u)){p.cover=u;p.coverAuto=1;if(!b.spine&&(b.display==='Lomo'||!b.display))p.display='Portada'}
+  const ds=strip(d.description);if(!b.description&&ds)p.description=ds;
+  if(!b.pages&&+d.pages)p.pages=+d.pages;
+  if(!b.year&&(d.release_year||d.release_date))p.year=String(d.release_year||String(d.release_date).slice(0,4));
+  if(!b.isbn){const x=isbn13(d.isbns);if(x)p.isbn=x}
+  if(!b.categories&&i.g.length)p.categories=i.g.join(', ');
+  if(!b.saga&&i.s){p.saga=i.s;if(!b.sagaN&&+i.n)p.sagaN=+i.n}
+  p.hc={...(b.hc||{}),...i,t:Date.now()};Object.assign(b,p);
+  try{if(typeof draft!=='undefined'&&draft&&draft.id===b.id)Object.assign(draft,p)}catch(e){}return p}
+async function hcEnrichBook(b){if(!hcTok())return false;let d;try{d=await hcFind(b)}catch(e){if(/clave|sin/.test(e.message))throw e;return false}
+  if(!d){b.hcMiss=Date.now();return false}await applyHC(b,d);persistSoon();return true}
+window.hcEnrichBook=hcEnrichBook;window.hcOn=()=>!!hcTok();
+let hcRun=false,hcStart=0;
+window.hcEnrichAll=async force=>{if(!hcTok()){if(force)toast('Primero pega tu clave en Perfil → Hardcover.');return}
+  if(hcRun&&Date.now()-hcStart<20*60e3){if(force)toast('Ya estoy completando con Hardcover…');return}
+  if(!navigator.onLine){if(force)toast('Sin conexión a internet');return}
+  const list=(data.books||[]).filter(b=>b.format!=='Audiolibro'&&!b.hc&&(force||!b.hcMiss||Date.now()-b.hcMiss>3*864e5));
+  if(!list.length){if(force)toast('Todos tus libros ya tienen datos de Hardcover ✦');setTimeout(()=>findMissingCovers(false),1500);return}
+  hcRun=true;hcStart=Date.now();ERR=0;let done=0,ok=0,bad='';
+  for(const b of list){stat(`Completando con Hardcover… ${done}/${list.length}`);
+    try{if(await withTO(hcEnrichBook(b),30000))ok++}catch(e){if(/clave|sin/.test(e.message)){bad='Tu clave de Hardcover no es válida o venció.';break}}
+    done++;if(done%25===0)try{render()}catch(e){}}
+  hcRun=false;persist();try{rerender()}catch(e){}
+  stat(bad||`Hardcover: ${ok} de ${list.length} libros completados`+(ERR?` · ${ERR} consultas fallaron`:''),true);
+  if(!bad)setTimeout(()=>findMissingCovers(false),2500)};
+window.searchHardcover=async q=>{q=String(q||'').replace(/^isbn:/i,'').trim();if(!hcTok())throw new Error('sin clave');
+  return(await hcSearch(q,12)).map(d=>({source:'hardcover',extId:String(d.id||''),title:d.title||'',author:arr(d.author_names).join(', '),description:strip(d.description),pages:+d.pages||0,isbn:isbn13(d.isbns),cover:hcImg(d),published:String(d.release_year||String(d.release_date||'').slice(0,4)||''),publisher:'',categories:arr(d.genres).slice(0,6).join(', '),hc:hcInfo(d)}))};
+const _isr3=importSearchResult;importSearchResult=function(r,i){const n=data.books.length;_isr3(r,i);const b=data.books[data.books.length-1];
+  if(data.books.length>n&&b&&hcTok()){const x=r&&r[i]?r[i]:null;
+    if(x&&x.source==='hardcover'&&x.hc){b.hc={...x.hc,t:Date.now()};if(typeof draft!=='undefined'&&draft&&draft.id===b.id)draft.hc=b.hc;persistSoon()}
+    else hcEnrichBook(b).then(ok=>{if(!ok&&window.__grSync&&(b.goodreadsUrl||b.isbn))window.__grSync(b)}).catch(()=>{})}};
 window.hcData=async id=>{const b=gb(id);if(!b)return;if(!hcTok())return toast('Primero pega tu clave de Hardcover en Perfil → Hardcover.');toast('Buscando en Hardcover…');
   let d;try{d=await hcFind(b)}catch(e){return toast('Hardcover: '+e.message)}
   if(!d)return toast('No encontré este libro en Hardcover.');
-  const ser=arr(d.series_names)[0];b.hc={g:arr(d.genres).slice(0,8),m:arr(d.moods).slice(0,8),w:arr(d.content_warnings).slice(0,8),s:ser||'',slug:d.slug||'',t:Date.now()};
-  if(!b.categories&&b.hc.g.length)b.categories=b.hc.g.join(', ');
-  if(!b.saga&&ser)b.saga=ser;
-  const u=hcImg(d);if(!b.cover&&u&&await imgOk(u)){b.cover=u;b.coverAuto=1;if(!b.spine&&(b.display==='Lomo'||!b.display))b.display='Portada'}
+  await applyHC(b,d);const bid=String(d.id||'').replace(/\D/g,'');
+  if(bid){try{const c=await hcQ(`query{book_characters(where:{book_id:{_eq:${bid}}},limit:40){character{name}}}`);b.hc.c=[...new Set((c.book_characters||[]).map(x=>x.character&&x.character.name).filter(Boolean))].slice(0,40)}catch(e){}
+    try{const e2=await hcQ(`query{editions(where:{book_id:{_eq:${bid}}},limit:30){edition_format pages release_date isbn_10 isbn_13 publisher{name}}}`);b.hc.e=(e2.editions||[]).map(x=>({f:x.edition_format||'',p:x.pages||0,y:String(x.release_date||'').slice(0,4),i:x.isbn_13||x.isbn_10||'',u:(x.publisher&&x.publisher.name)||''})).filter(x=>x.i||x.f).slice(0,30)}catch(e){}}
   persist();closeSheet();rerender();setTimeout(()=>bookDetails(id),60)};
-const hcBlock=b=>{const h=b.hc,L=(t,a)=>a&&a.length?`<div class="muted small"><b>${t}:</b> ${a.map(esc).join(', ')}</div>`:'';
-  return(h?L('Géneros (Hardcover)',h.g)+L('Estados de ánimo',h.m)+L('Advertencias',h.w)+(h.slug?`<a class="muted small" href="https://hardcover.app/books/${esc(h.slug)}" target="_blank" rel="noopener">Ver en Hardcover ↗</a>`:''):'')+
-   `<button class="mini-btn" type="button" onclick="hcData('${b.id}')">${h?'Actualizar':'Traer'} datos de Hardcover</button>`};
+const hcBlock=b=>{const h=b.hc,L=(t,a)=>a&&a.length?`<div class="muted small"><b>${t}:</b> ${a.map(esc).join(', ')}</div>`:'';let x='';
+  if(h){if(h.r)x+=`<div class="muted small"><b>Valoración en Hardcover:</b> ★ ${h.r.toFixed(1)}${h.rc?' ('+h.rc.toLocaleString('es')+' valoraciones)':''}</div>`;
+    x+=L('Géneros',h.g)+L('Estados de ánimo',h.m)+L('Advertencias de contenido',h.w)+L('Personajes',h.c)
+     +(h.e&&h.e.length?`<details class="muted small"><summary><b>Ediciones (${h.e.length})</b></summary>${h.e.map(e=>`<div>${esc([e.f,e.u,e.y,e.p?e.p+' pág.':'',e.i].filter(Boolean).join(' · '))}</div>`).join('')}</details>`:'')
+     +(h.slug?`<a class="muted small" href="https://hardcover.app/books/${esc(h.slug)}" target="_blank" rel="noopener">Ver en Hardcover ↗</a>`:'')}
+  return x+`<button class="mini-btn" type="button" onclick="hcData('${b.id}')">${h&&h.c?'Actualizar':'Traer'} personajes, ediciones y datos de Hardcover</button>`};
 window.hcConfig=()=>{showSheet(`<div class="sheet-header"><div><h2>Hardcover</h2><div class="muted small">Tu clave se guarda solo en este teléfono</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
   <div class="ss-form" style="display:grid;gap:10px"><div id="hcMsg" class="muted small" style="min-height:20px">${hcTok()?'Ya hay una clave guardada.':'Pega aquí la clave que creaste en hardcover.app/account/api'}</div>
   <label>Clave de la API</label><input id="hcTok" type="password" autocomplete="off" placeholder="Pega tu clave" value="">
