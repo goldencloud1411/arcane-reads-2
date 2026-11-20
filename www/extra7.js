@@ -191,7 +191,7 @@ window.grSyncDraft=async function(){const m=$('grSyncMsg'),btn=$('grSyncBtn');if
   if(!g){m.textContent='No encontré datos ni en Goodreads, ni en Google Books, ni en Open Library. Revisa el ISBN o el título, o pega el enlace de la ficha de Goodreads.';return}
   toast(g.fallback?'Goodreads no respondió; completé con Google Books / Open Library ✦':'Datos de Goodreads listos ✦');if(editorOpen(draft.id))reopenEditor()};
 function inject(){const sb=$('secBasic');if(!sb||sb.dataset.x7)return;sb.dataset.x7=1;
-  const url=$('grBookUrl');if(url)url.insertAdjacentHTML('afterend',`<button type="button" class="mini-btn" id="grSyncBtn" style="margin-top:8px" onclick="grSyncDraft()">✦ Traer todos los datos de Goodreads</button><div class="muted small" id="grSyncMsg">${draft&&draft.grDone?'Última sincronización: '+new Date(draft.grDone).toLocaleDateString('es'):'Usa el ISBN o el enlace de la ficha.'}</div>`);
+  const url=$('grBookUrl');if(url)url.insertAdjacentHTML('afterend',`<button type="button" class="mini-btn" id="grSyncBtn" style="margin-top:8px" onclick="grSyncDraft()">✦ Traer datos del libro</button><div class="muted small" id="grSyncMsg">${draft&&draft.grDone?'Última sincronización: '+new Date(draft.grDone).toLocaleDateString('es'):'Usa el ISBN o el título: Hardcover primero, Goodreads de respaldo.'}</div>`);
   const col=sb.querySelector('input[oninput*="draft.collection"]');
   const html=`<label>Nº en la saga</label><input type="number" min="0" step="0.5" value="${draft.sagaN||''}" oninput="draft.sagaN=+this.value||''" placeholder="1, 2, 3… (ordena la estantería)">
     <label>Géneros</label><div class="tagbox" data-f="categories"></div>

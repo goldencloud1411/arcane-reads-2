@@ -54,6 +54,7 @@ function draw(id,keepScroll){const b=getBook(id);if(!b)return;
 window.dtMenu=(id,ev)=>{ev&&ev.stopPropagation();const old=document.getElementById('dtPop');if(old){old.remove();return}
   const b=getBook(id),h=(b&&b.hc)||{};const items=[
     ['↻',hcOn()?(h.x||h.id?'Volver a traer datos de Hardcover':'Traer datos de Hardcover'):'Conectar Hardcover',hcOn()?`hcData('${id}')`:`hcConfig()`],
+    ['🔗','Vincular con enlace de Hardcover',`hcLink('${id}')`],
     ['🖼','Cambiar o buscar portada',`coverTools('${id}',true)`],
     ['✎','Editar libro',`editBook('${id}')`],
     ['☆','Datos de Goodreads (respaldo)',`grExtra('${id}')`]];
@@ -77,15 +78,15 @@ window.__dtRefresh=id=>{const d=document.querySelector('#dlg .dt-body');if(d&&d.
 renderProfile=function(){
   const wrap=document.createElement('div');wrap.className='section-gap';
   const bks=(data.books||[]).filter(b=>b.format!=='Audiolibro'),on=hcOn();
-  const pend=bks.filter(b=>!b.hc||(b.hc.id&&!b.hc.x)).length,noCov=bks.filter(b=>!b.cover).length;
+  const pend=bks.filter(b=>window.__hcPending&&window.__hcPending(b)).length,noCov=bks.filter(b=>!b.cover).length;
   const lb=data.settings.lastBackup,days=lb?Math.floor((Date.now()-lb)/864e5):null;
   wrap.innerHTML=`
   <section><h2>Perfil</h2><div class="muted small">Tu rincón de lectura</div></section>
-  <section class="card pf-hero"><img class="brand-badge" src="icon-192.png" alt="" style="width:54px;height:54px"><div style="flex:1;min-width:0"><div class="field" style="margin:0"><label for="pName">Tu nombre</label><input id="pName" value="${esc(data.profile.name||'')}" onchange="data.profile.name=this.value.trim();save();rerender()"></div></div></section>
+  <section class="card pf-hero"><img class="brand-badge" src="${LOGO_URI}" alt="" style="width:54px;height:54px"><div style="flex:1;min-width:0"><div class="field" style="margin:0"><label for="pName">Tu nombre</label><input id="pName" value="${esc(data.profile.name||'')}" onchange="data.profile.name=this.value.trim();save();rerender()"></div></div></section>
   <section class="card"><div class="label-row"><h3>Hardcover</h3><span class="pf-st ${on?'ok':''}">${on?'Conectado':'Sin conectar'}</span></div>
     <div class="muted small" style="margin:4px 0 12px">${on?'Portadas, sinopsis, géneros, personajes y ediciones se traen solos al agregar un libro.':'Pega tu clave de API para traer portadas y datos de tus libros automáticamente.'}</div>
     ${on?`<div class="pf-rows"><div class="dx-row"><span>Libros por completar</span><b>${pend}</b></div><div class="dx-row"><span>Libros sin portada</span><b>${noCov}</b></div></div>
-    <div class="pf-btns"><button class="btn-soft" onclick="hcEnrichAll(true)" ${pend||noCov?'':'disabled'}>Completar ahora</button>${noCov?`<button class="mini-btn" onclick="showMissingCovers()">Ver sin portada</button>`:''}</div>`:''}
+    <div class="pf-btns"><button class="btn-soft" onclick="hcEnrichAll(true)" ${pend||noCov?'':'disabled'}>Completar ahora</button>${pend||noCov?`<button class="mini-btn" onclick="showPending()">Ver cuáles</button>`:''}</div>`:''}
     <div class="pf-btns" style="margin-top:${on?'8px':'0'}"><button class="${on?'mini-btn':'btn-soft'}" onclick="hcConfig()">${on?'Cambiar clave':'Conectar Hardcover'}</button></div></section>
   <section class="card"><h3>Lectura</h3><div class="field" style="margin-top:8px"><label for="pGoal">Meta de libros este año</label><input id="pGoal" type="number" min="1" inputmode="numeric" value="${data.goal}" onchange="data.goal=Math.max(1,Math.round(+this.value||1));save();rerender()"><label>Minutos de lectura al día</label><input type="number" min="5" max="600" inputmode="numeric" value="${data.settings.dailyMin||20}" onchange="data.settings.dailyMin=Math.max(5,+this.value||20);save();toast('Meta guardada')"></div></section>
   <section class="card"><h3>Apariencia</h3><div class="themes">${themePicker()}</div></section>
@@ -93,6 +94,35 @@ renderProfile=function(){
   <section class="card" id="installCard" hidden><h3>Instalar app</h3><div class="muted small" style="margin-bottom:10px">Ábrela desde tu pantalla de inicio, sin barra del navegador.</div><button class="btn-soft" onclick="installApp()">Instalar Arcane Reads</button></section>
   <div class="muted small" style="text-align:center;padding:10px">Arcane Reads · versión 3.0.0</div>`;
   applyTheme();return wrap};
+
+
+/* ══ Lista de libros pendientes + vincular con enlace de Hardcover ══ */
+window.showPending=()=>{const L=(data.books||[]).filter(b=>b.format!=='Audiolibro'&&((window.__hcPending&&window.__hcPending(b))||!b.cover)).sort((a,b)=>String(a.title).localeCompare(String(b.title)));
+  const why=b=>!b.hc?'No lo encontré en Hardcover':(!b.cover?'Sin portada':'Faltan personajes y ediciones');
+  showSheet(`<div class="sheet-header"><div><h2>Por completar</h2><div class="muted small">${L.length?L.length+' libro'+(L.length===1?'':'s'):'Todo completo ✦'}</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
+  <div class="ss-sec">${L.map(b=>`<div class="ss-row"><div><b>${esc(b.title)}</b><span>${esc(b.author||'')} · ${why(b)}</span></div><div style="display:flex;gap:6px;flex:none"><button class="mini-btn" type="button" onclick="closeSheet();hcData('${b.id}')">Reintentar</button><button class="mini-btn" type="button" onclick="hcLink('${b.id}')">Enlace</button></div></div>`).join('')}</div>
+  ${L.length?'<div class="muted small" style="margin-top:10px">“Enlace”: abre el libro en hardcover.app, copia la dirección y pégala; se traen portada y datos al instante.</div>':''}`)};
+window.hcLink=id=>{const b=getBook(id);if(!b)return;
+  showSheet(`<div class="sheet-header"><div><h2>Vincular con Hardcover</h2><div class="muted small">${esc(b.title)}</div></div><button class="sheet-close" onclick="closeSheet()">×</button></div>
+  <div class="field"><label for="hcLinkIn">Enlace del libro en Hardcover</label><input id="hcLinkIn" type="url" inputmode="url" autocomplete="off" placeholder="https://hardcover.app/books/…"></div>
+  <button class="btn-soft" id="hcLinkGo" style="width:100%;margin-top:12px" onclick="hcLinkGo('${id}')">Vincular y traer datos</button>
+  <div class="muted small" id="hcLinkMsg" style="margin-top:10px">Abre el libro en hardcover.app, copia la dirección de la página y pégala aquí.</div>`)};
+window.hcLinkGo=async id=>{const i=$('hcLinkIn'),g=$('hcLinkGo'),m=$('hcLinkMsg');if(!i)return;g.disabled=true;m.textContent='Buscando en Hardcover…';
+  let ok=false;try{ok=await hcLinkUrl(id,i.value.trim())}catch(e){}
+  if(ok)closeSheet();else{g.disabled=false;m.textContent='No pude vincularlo. Revisa que sea un enlace de hardcover.app/books/… y tu conexión.'}};
+
+/* ══ Editor: el botón de datos usa Hardcover primero (Goodreads queda de respaldo) y siempre responde ══ */
+window.grSyncDraft=async function(){if(typeof draft==='undefined'||!draft)return;
+  const say=t=>{const e=$('grSyncMsg');if(e)e.textContent=t},btn=()=>$('grSyncBtn'),race=(p,ms)=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('tiempo')),ms))]);
+  if(btn())btn().disabled=true;say('Buscando…');let ok='',err='';
+  if(hcOn()&&window.__hcFind){try{const d=await race(window.__hcFind(draft),30000);
+      if(d){await window.__hcApply(draft,d);try{await race(window.__hcExtras(draft,d),30000)}catch(e){}ok='Hardcover'}}
+    catch(e){err=/clave/.test(e.message)?'Tu clave de Hardcover no es válida. ':''}}
+  if(!ok&&typeof syncGoodreads==='function'){say('No estaba en Hardcover; probando Goodreads y otras fuentes…');
+    try{const g=await race(syncGoodreads(draft,{force:true,search:true}),35000);if(g)ok=g.fallback?'Google Books / Open Library':'Goodreads'}catch(e){}}
+  if(btn())btn().disabled=false;
+  if(ok){toast('Datos traídos desde '+ok+' ✦');if(typeof editorOpen==='function'&&editorOpen(draft.id)&&typeof reopenEditor==='function')reopenEditor();else say('Listo: datos de '+ok+'.')}
+  else say(err+'No encontré datos. Revisa el ISBN o el título, o usa “Vincular con enlace de Hardcover” desde el menú ⋯ del libro.')};
 
 /* ══ Portadas: reintentar las que no cargan y repararlas buscando otra fuente (Hardcover primero) ══ */
 const healQ=[];let healing=false;

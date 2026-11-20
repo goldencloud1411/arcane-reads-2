@@ -57,7 +57,7 @@ function render(){
 function renderTopbar(){
   const top=$('topbar');
   top.className='topbar';
-  top.innerHTML=`<div class="brand"><img class="brand-badge" src="icon-192.png" alt=""><div><div class="eyebrow">${greeting()}, ${esc(data.profile.name||'lector')}</div><h1>Arcane Reads</h1></div></div><button class="mini-btn" onclick="openQuickActions()">✦ Acciones</button>`;
+  top.innerHTML=`<div class="brand"><img class="brand-badge" src="${LOGO_URI}" alt=""><div><div class="eyebrow">${greeting()}, ${esc(data.profile.name||'lector')}</div><h1>Arcane Reads</h1></div></div><button class="mini-btn" onclick="openQuickActions()">✦ Acciones</button>`;
 }
 function renderNav(){
  const paths={'Inicio':'<path d="M3 10 12 3l9 7v10H3z"/><path d="M9 20v-7h6v7"/>','Libros':'<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/>','Biblioteca':'<path d="M3 5h6l3 2 3-2h6v15h-6l-3 2-3-2H3zM12 7v15"/>','Estadísticas':'<path d="M4 20V12h4v8M10 20V4h4v16M16 20v-11h4v11"/>','Perfil':'<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>'};
@@ -174,7 +174,7 @@ function renderProfile(){
   wrap.className='section-gap';
   wrap.innerHTML=`
     <section><h2>Perfil</h2><div class="muted small">Configura la estética y tus datos</div></section>
-    <section class="card"><div class="label-row"><div><h3>${esc(data.profile.name||'Tu perfil')}</h3><div class="muted small">Tu rincón de lectura</div></div><img class="brand-badge" src="icon-192.png" alt="" style="width:46px;height:46px"></div></section>
+    <section class="card"><div class="label-row"><div><h3>${esc(data.profile.name||'Tu perfil')}</h3><div class="muted small">Tu rincón de lectura</div></div><img class="brand-badge" src="${LOGO_URI}" alt="" style="width:46px;height:46px"></div></section>
     <section class="card"><h3>Tu lectura</h3><div class="field" style="margin-top:8px"><label for="pName">Tu nombre</label><input id="pName" value="${esc(data.profile.name||'')}" onchange="data.profile.name=this.value.trim();rerender()"><label for="pGoal">Meta de libros este año</label><input id="pGoal" type="number" min="1" inputmode="numeric" value="${data.goal}" onchange="data.goal=Math.max(1,Math.round(+this.value||1));rerender()"></div></section>
     <section class="card" id="installCard" hidden><h3>Instalar app</h3><div class="muted small" style="margin-bottom:10px">Ábrela desde tu pantalla de inicio, sin barra del navegador.</div><button class="btn-soft" onclick="installApp()">Instalar Arcane Reads</button></section>
     <section class="card"><h3>App</h3>

@@ -59,3 +59,6 @@
 .pf-st{font-size:12px;font-weight:700;padding:4px 12px;border-radius:999px;background:var(--accent-soft);color:var(--muted)}.pf-st.ok{background:rgba(70,160,100,.18);color:#3f9a62}
 .pf-btns{display:flex;gap:8px;flex-wrap:wrap}.pf-btns .btn-soft{flex:1;min-width:140px}.pf-btns .btn-soft:disabled{opacity:.5}
 .pf-rows{margin-bottom:12px}
+/* estantería: los libros de una repisa incompleta se centran */
+.shelf-row{justify-content:center!important}
+.shelf-row .shelf-empty{margin:0 auto}
