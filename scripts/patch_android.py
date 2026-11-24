@@ -24,7 +24,16 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.content.ContentValues;
+import android.net.Uri;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
 import android.view.View;
+import android.webkit.JavascriptInterface;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 import android.view.WindowManager;
 import android.webkit.WebView;
 import androidx.core.graphics.ColorUtils;
@@ -73,9 +82,43 @@ public class MainActivity extends BridgeActivity {
     c.setAppearanceLightNavigationBars(light);
   }
 
+  /* Guarda archivos (copias de seguridad) en Descargas/ArcaneReads, visible en la app Archivos */
+  public class ArcaneNative {
+    @JavascriptInterface
+    public String save(String name, String b64, String mime) {
+      try {
+        byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
+        if (Build.VERSION.SDK_INT >= 29) {
+          ContentValues v = new ContentValues();
+          v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+          v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+          v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/ArcaneReads");
+          Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+          if (uri == null) return "ERR:sin destino";
+          OutputStream os = getContentResolver().openOutputStream(uri);
+          if (os == null) return "ERR:sin salida";
+          os.write(bytes);
+          os.close();
+        } else {
+          File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "ArcaneReads");
+          dir.mkdirs();
+          FileOutputStream os = new FileOutputStream(new File(dir, name));
+          os.write(bytes);
+          os.close();
+        }
+        return "OK:Descargas/ArcaneReads/" + name;
+      } catch (Exception e) {
+        return "ERR:" + e.getMessage();
+      }
+    }
+  }
+
   @Override
   public void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+    if (getBridge() != null && getBridge().getWebView() != null) {
+      getBridge().getWebView().addJavascriptInterface(new ArcaneNative(), "ArcaneNative");
+    }
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
     if (Build.VERSION.SDK_INT >= 28) {
       WindowManager.LayoutParams lp = getWindow().getAttributes();

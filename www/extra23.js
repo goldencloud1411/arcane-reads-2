@@ -92,7 +92,7 @@ renderProfile=function(){
   <section class="card"><h3>Apariencia</h3><div class="themes">${themePicker()}</div></section>
   <section class="card"><h3>Copia de seguridad</h3><div class="muted small" style="margin:6px 0 10px">${lb?'Última copia: '+(days?'hace '+days+' días':'hoy'):'Aún no has hecho ninguna copia.'}${days>=7?' · Te recomiendo hacer una nueva.':''}</div><div class="pf-btns"><button class="btn-soft" onclick="backup()">Exportar</button><button class="mini-btn" onclick="$('importer').click()">Importar</button></div><div class="muted small" style="margin-top:8px">Importar acepta tu copia (.json) o el CSV exportado de Goodreads.</div></section>
   <section class="card" id="installCard" hidden><h3>Instalar app</h3><div class="muted small" style="margin-bottom:10px">Ábrela desde tu pantalla de inicio, sin barra del navegador.</div><button class="btn-soft" onclick="installApp()">Instalar Arcane Reads</button></section>
-  <div class="muted small" style="text-align:center;padding:10px">Arcane Reads · versión 3.0.0</div>`;
+  <div class="muted small" style="text-align:center;padding:10px">Arcane Reads · versión 3.0.4</div>`;
   applyTheme();return wrap};
 
 
@@ -123,6 +123,30 @@ window.grSyncDraft=async function(){if(typeof draft==='undefined'||!draft)return
   if(btn())btn().disabled=false;
   if(ok){toast('Datos traídos desde '+ok+' ✦');if(typeof editorOpen==='function'&&editorOpen(draft.id)&&typeof reopenEditor==='function')reopenEditor();else say('Listo: datos de '+ok+'.')}
   else say(err+'No encontré datos. Revisa el ISBN o el título, o usa “Vincular con enlace de Hardcover” desde el menú ⋯ del libro.')};
+
+
+/* ══ "Leyendo ahora": primero el libro que leíste o actualizaste más recientemente ══ */
+const snap=new Map(),sigOf=b=>(b.current||0)+'|'+b.status;
+function touchBooks(){try{(data.books||[]).forEach(b=>{const g=sigOf(b);if(snap.has(b.id)&&snap.get(b.id)!==g)b.touched=Date.now();snap.set(b.id,g)})}catch(e){}}
+setInterval(touchBooks,1200);
+readingBooks=function(){const L=(data.books||[]).filter(b=>b.status==='Leyendo'),idx=new Map();
+  (data.sessions||[]).forEach((s,i)=>idx.set(s.bookId,{i,t:Date.parse((s.date||'')+'T12:00:00')||0}));
+  const sc=b=>{const x=idx.get(b.id);return Math.max(b.touched||0,x?x.t:0)},ix=b=>{const x=idx.get(b.id);return x?x.i:-1};
+  return L.map((b,i)=>[b,i]).sort((a,b)=>sc(b[0])-sc(a[0])||ix(b[0])-ix(a[0])||a[1]-b[1]).map(x=>x[0])};
+
+/* ══ Copia de seguridad: se guarda en Descargas/ArcaneReads (visible en Archivos) ══ */
+backup=async function(){
+  try{data.settings.lastBackup=Date.now();await save()}catch(e){}
+  const json=JSON.stringify(data),name='arcane-reads-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  let done='';
+  if(window.ArcaneNative&&window.ArcaneNative.save){
+    try{const by=new TextEncoder().encode(json);let bin='';for(let i=0;i<by.length;i+=0x8000)bin+=String.fromCharCode.apply(null,by.subarray(i,i+0x8000));
+      const r=String(window.ArcaneNative.save(name,btoa(bin),'application/json'));
+      if(r.startsWith('OK:'))done='Copia guardada en '+r.slice(3);else console.warn(r)}catch(e){console.warn(e)}}
+  if(!done){try{const f=new File([json],name,{type:'application/json'});
+      if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Copia de Arcane Reads'});done='Copia lista: elige dónde guardarla'}}catch(e){if(e&&e.name==='AbortError'){toast('Exportación cancelada');return}}}
+  if(!done){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);done='Copia exportada (revisa Descargas)'}
+  toast(done);setTimeout(()=>{try{rerender()}catch(e){}},300)};
 
 /* ══ Portadas: reintentar las que no cargan y repararlas buscando otra fuente (Hardcover primero) ══ */
 const healQ=[];let healing=false;
