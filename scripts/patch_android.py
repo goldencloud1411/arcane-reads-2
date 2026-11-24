@@ -175,3 +175,30 @@ for d in res.glob("mipmap-*dpi"):
     for n in ("ic_launcher.png", "ic_launcher_round.png"):
         shutil.copy("www/icon-192.png", d / n)
 print("ícono aplicado")
+
+# ---- Firma fija: todas las versiones se firman con la misma clave, así que se pueden instalar ENCIMA sin perder datos ----
+gradle = pathlib.Path("android/app/build.gradle")
+ks = pathlib.Path("scripts/arcane-debug.keystore")
+if gradle.exists() and ks.exists():
+    shutil.copy(ks, "android/app/arcane-debug.keystore")
+    g = gradle.read_text(encoding="utf-8")
+    if "arcane-debug.keystore" not in g:
+        block = """
+    signingConfigs {
+        debug {
+            storeFile file('arcane-debug.keystore')
+            storeType 'pkcs12'
+            storePassword 'arcanereads'
+            keyAlias 'arcane'
+            keyPassword 'arcanereads'
+        }
+    }
+"""
+        if "signingConfigs {" in g:
+            print("AVISO: build.gradle ya tenía signingConfigs; no se tocó la firma")
+        else:
+            g, n = re.subn(r"(\nandroid\s*\{)", lambda m: m.group(1) + block, g, count=1)
+            gradle.write_text(g, encoding="utf-8")
+            print("firma fija aplicada" if n else "AVISO: no encontré el bloque android{} en build.gradle")
+else:
+    print("AVISO: no se encontró build.gradle o la clave; la firma no se fijó")

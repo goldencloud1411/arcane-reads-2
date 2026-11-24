@@ -92,7 +92,7 @@ renderProfile=function(){
   <section class="card"><h3>Apariencia</h3><div class="themes">${themePicker()}</div></section>
   <section class="card"><h3>Copia de seguridad</h3><div class="muted small" style="margin:6px 0 10px">${lb?'Última copia: '+(days?'hace '+days+' días':'hoy'):'Aún no has hecho ninguna copia.'}${days>=7?' · Te recomiendo hacer una nueva.':''}</div><div class="pf-btns"><button class="btn-soft" onclick="backup()">Exportar</button><button class="mini-btn" onclick="$('importer').click()">Importar</button></div><div class="muted small" style="margin-top:8px">Importar acepta tu copia (.json) o el CSV exportado de Goodreads.</div></section>
   <section class="card" id="installCard" hidden><h3>Instalar app</h3><div class="muted small" style="margin-bottom:10px">Ábrela desde tu pantalla de inicio, sin barra del navegador.</div><button class="btn-soft" onclick="installApp()">Instalar Arcane Reads</button></section>
-  <div class="muted small" style="text-align:center;padding:10px">Arcane Reads · versión 3.0.4</div>`;
+  <div class="muted small" style="text-align:center;padding:10px">Arcane Reads · versión 3.0.5</div>`;
   applyTheme();return wrap};
 
 
